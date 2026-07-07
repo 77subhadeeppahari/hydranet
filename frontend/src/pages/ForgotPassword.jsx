@@ -11,6 +11,7 @@ export default function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [expectedOtp, setExpectedOtp] = useState("");
+  const [emailSent, setEmailSent] = useState(false);
   const [resetToken, setResetToken] = useState("");
   const [maskedEmail, setMaskedEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -22,11 +23,12 @@ export default function ForgotPassword() {
     setLoading(true); setError("");
     try {
       const { data } = await api.post("/auth/forgot-password", { recovery_email: email });
-      setExpectedOtp(data.otp);
+      setExpectedOtp(data.otp || "");
+      setEmailSent(!!data.email_sent);
       setResetToken(data.reset_token);
       setMaskedEmail(data.recovery_email_masked);
       setStep(2);
-      toast.success("OTP generated");
+      toast.success(data.email_sent ? "OTP sent to your email" : "OTP generated (shown below)");
     } catch (err) {
       setError(formatApiErrorDetail(err.response?.data?.detail) || "Failed to request OTP");
     } finally { setLoading(false); }
@@ -35,7 +37,7 @@ export default function ForgotPassword() {
   const verifyAndReset = async (e) => {
     e.preventDefault();
     setError("");
-    if (otp !== expectedOtp) { setError("Incorrect OTP"); return; }
+    if (expectedOtp && otp !== expectedOtp) { setError("Incorrect OTP"); return; }
     if (newPassword.length < 6) { setError("Password must be at least 6 characters"); return; }
     setLoading(true);
     try {
@@ -77,8 +79,14 @@ export default function ForgotPassword() {
             <form onSubmit={verifyAndReset} className="mt-8 space-y-5">
               <div className="p-4 rounded-md bg-[#F26B21]/10 border border-[#F26B21]/30 text-sm text-slate-200">
                 <div>OTP sent to <span className="font-mono-metric text-white">{maskedEmail}</span></div>
-                <div className="mt-2 text-xs text-slate-400">DEV MODE — OTP shown here since no email provider is configured:</div>
-                <div className="mt-1 font-mono-metric text-2xl font-bold text-[#F26B21] tracking-widest" data-testid="forgot-dev-otp">{expectedOtp}</div>
+                {emailSent ? (
+                  <div className="mt-2 text-xs text-slate-400">Check your inbox (and spam folder). The OTP expires in 15 minutes.</div>
+                ) : (
+                  <>
+                    <div className="mt-2 text-xs text-slate-400">Email delivery failed — DEV fallback OTP:</div>
+                    <div className="mt-1 font-mono-metric text-2xl font-bold text-[#F26B21] tracking-widest" data-testid="forgot-dev-otp">{expectedOtp}</div>
+                  </>
+                )}
               </div>
               <div>
                 <label className="block text-xs uppercase tracking-widest font-mono-metric text-slate-400 mb-2">Enter OTP</label>

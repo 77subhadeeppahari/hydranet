@@ -6,6 +6,7 @@ load_dotenv(ROOT_DIR / '.env')
 
 import os
 import uuid
+import asyncio
 import logging
 import secrets
 from datetime import datetime, timezone, timedelta
@@ -13,6 +14,7 @@ from typing import List, Optional
 
 import bcrypt
 import jwt
+import resend
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.cors import CORSMiddleware
@@ -30,6 +32,43 @@ api_router = APIRouter(prefix="/api")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# ---------------- Email (Resend) ----------------
+resend.api_key = os.environ.get("RESEND_API_KEY", "")
+SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "onboarding@resend.dev")
+CONTACT_NOTIFICATION_EMAIL = os.environ.get("CONTACT_NOTIFICATION_EMAIL", "")
+
+async def send_email(to: str, subject: str, html: str) -> Optional[str]:
+    """Send an email via Resend. Returns email id on success, None on failure.
+    Never raises — failures are logged so the caller's request is not broken."""
+    if not resend.api_key:
+        logger.warning("RESEND_API_KEY not configured; skipping email send")
+        return None
+    params = {"from": SENDER_EMAIL, "to": [to], "subject": subject, "html": html}
+    try:
+        result = await asyncio.to_thread(resend.Emails.send, params)
+        email_id = result.get("id") if isinstance(result, dict) else None
+        logger.info(f"Email sent to {to} (id={email_id}) subject='{subject}'")
+        return email_id
+    except Exception as e:
+        logger.error(f"Failed to send email to {to}: {e}")
+        return None
+
+def _wrap_email_html(title: str, body_html: str) -> str:
+    return f"""
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background:#020617; padding:32px 0;">
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:560px; margin:0 auto; background:#0F172A; border:1px solid #1E293B; border-radius:12px; overflow:hidden;">
+        <tr><td style="padding:24px 32px; background:#0F2650; border-bottom:1px solid #1E293B;">
+          <div style="color:#F26B21; font-size:11px; letter-spacing:2px; text-transform:uppercase; font-family: monospace;">Hydranet Broadband</div>
+          <div style="color:#F8FAFC; font-size:22px; font-weight:700; margin-top:6px;">{title}</div>
+        </td></tr>
+        <tr><td style="padding:28px 32px; color:#CBD5E1; font-size:14px; line-height:1.7;">{body_html}</td></tr>
+        <tr><td style="padding:16px 32px; background:#020617; border-top:1px solid #1E293B; color:#64748B; font-size:11px; text-align:center;">
+          Hydranet Broadband · Automated message
+        </td></tr>
+      </table>
+    </div>
+    """
 
 # ---------------- Auth utils ----------------
 JWT_ALGORITHM = "HS256"
@@ -240,6 +279,23 @@ async def create_contact(payload: ContactCreate):
     doc = submission.model_dump()
     doc["created_at"] = doc["created_at"].isoformat()
     await db.contacts.insert_one(doc)
+    # Fire-and-forget email notification (never fails the request)
+    if CONTACT_NOTIFICATION_EMAIL:
+        html = _wrap_email_html(
+            "New Enquiry Received",
+            f"""
+            <p>You have a new contact enquiry on Hydranet Broadband.</p>
+            <table cellpadding="0" cellspacing="0" style="width:100%; margin-top:16px; border-collapse:collapse;">
+              <tr><td style="padding:8px 0; color:#94A3B8; width:120px;">Name</td><td style="padding:8px 0; color:#F8FAFC;">{submission.name}</td></tr>
+              <tr><td style="padding:8px 0; color:#94A3B8;">Email</td><td style="padding:8px 0; color:#F8FAFC;">{submission.email}</td></tr>
+              <tr><td style="padding:8px 0; color:#94A3B8;">Phone</td><td style="padding:8px 0; color:#F8FAFC;">{submission.phone}</td></tr>
+              <tr><td style="padding:8px 0; color:#94A3B8;">Subject</td><td style="padding:8px 0; color:#F8FAFC;">{submission.subject or '—'}</td></tr>
+            </table>
+            <div style="margin-top:20px; padding:16px; background:#020617; border-left:3px solid #F26B21; color:#F8FAFC; white-space:pre-wrap;">{submission.message}</div>
+            <p style="margin-top:24px; color:#64748B; font-size:12px;">Submitted at {submission.created_at.strftime('%d %b %Y, %I:%M %p UTC')}</p>
+            """,
+        )
+        asyncio.create_task(send_email(CONTACT_NOTIFICATION_EMAIL, f"New Enquiry from {submission.name}", html))
     return submission
 
 # ---------------- Routes: Auth ----------------
@@ -289,14 +345,35 @@ async def forgot_password(payload: ForgotPasswordRequest):
         "used": False,
     })
     logger.info(f"Password reset OTP for {admin['username']}: {otp}")
-    # DEV mode: return the OTP directly on the response (no email provider configured).
-    return {
-        "message": "OTP generated. Use it to reset your password.",
-        "otp": otp,
+
+    email_sent = False
+    if resend.api_key:
+        html = _wrap_email_html(
+            "Password Reset OTP",
+            f"""
+            <p>You requested to reset your Hydranet Broadband admin password.</p>
+            <p>Use the OTP below to complete the reset. It expires in <strong style="color:#F26B21;">15 minutes</strong>.</p>
+            <div style="margin:24px 0; padding:20px; background:#020617; border:1px solid #F26B21; border-radius:8px; text-align:center;">
+              <div style="color:#94A3B8; font-size:11px; letter-spacing:2px; text-transform:uppercase; font-family: monospace;">Your OTP</div>
+              <div style="color:#F26B21; font-size:36px; font-weight:800; letter-spacing:8px; font-family: monospace; margin-top:8px;">{otp}</div>
+            </div>
+            <p style="color:#94A3B8; font-size:12px;">If you didn't request this, you can safely ignore this email.</p>
+            """,
+        )
+        email_id = await send_email(payload.recovery_email, "Hydranet — Password Reset OTP", html)
+        email_sent = email_id is not None
+
+    resp = {
+        "message": "OTP sent to your recovery email." if email_sent else "OTP generated. Email delivery failed — use the OTP shown below.",
+        "email_sent": email_sent,
         "reset_token": reset_token,
         "expires_in_minutes": 15,
         "recovery_email_masked": _mask_email(payload.recovery_email),
     }
+    # Fallback: return OTP inline only if email delivery was NOT successful
+    if not email_sent:
+        resp["otp"] = otp
+    return resp
 
 @api_router.post("/auth/reset-password")
 async def reset_password(payload: ResetPasswordRequest):
