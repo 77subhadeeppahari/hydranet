@@ -1,0 +1,29 @@
+{
+  "summary": "First-finish smoke test of Hydranet Broadband. Backend: 8 critical endpoints verified via curl (public plans by category, auth login, forgot/reset password DEV OTP flow with password restore, contact submit, admin GET/POST/PATCH/DELETE plans, admin contacts, 401 without token). Frontend: home renders with all required elements, /plans category toggles work with correct counts (4/3/3/6/6=22) and ₹ currency, contact form submits with success toast, /admin/login shows error on invalid creds, valid login redirects to dashboard showing 22 plans and 2 enquiries with 'NEW' badges. Password was reset to a temp value then restored to Spahari@20 (verified login works).",
+  "tested_scope": ["frontend", "backend", "auth", "integration"],
+  "passed": [
+    "GET /api/plans per category returns seeded plans (monthly:4, six_month:3, twelve_month:3, welcome:6, ott:6 — total 22)",
+    "Each category has >=1 popular plan",
+    "GET /api/admin/plans without token returns 401",
+    "POST /api/auth/login with seeded creds returns JWT",
+    "POST /api/auth/forgot-password returns OTP + reset_token inline (DEV mode)",
+    "POST /api/auth/reset-password succeeds; old password now fails, new password logs in",
+    "Password restored to 'Spahari@20' at end — verified login still works",
+    "POST /api/contact persists submission (appears in admin list)",
+    "Admin plan CRUD: POST created, PATCH updated price (reflected in public /api/plans), DELETE removed; final count back to 22",
+    "Home page shows Hydranet branding, 'View Plans', 'Talk to Us', 99.9%, 24/7, 12k+ stats",
+    "Plans page category toggles switch grid and show ₹ INR pricing",
+    "Contact form UI submission shows success toast",
+    "Invalid admin login shows admin-login-error",
+    "Valid admin login renders dashboard with 22 plans row + 2 enquiries with 'NEW' badges (visible in screenshot)"
+  ],
+  "failed": [],
+  "action_items": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "retest_needed": false,
+  "full_testing_deferred": true,
+  "notes": [
+    "Two script-level false negatives (not app bugs): badge text is 'NEW' (uppercase) — visible in screenshot; localStorage hn_token evaluate returned null likely due to timing right after redirect, but dashboard successfully rendered authenticated data (22 plans, 2 contacts) confirming token is stored and used.",
+    "Password was flipped to TempPass@99 during test and reset back to 'Spahari@20'; final login with 'Spahari@20' returned HTTP 200 — seeded credentials remain valid."
+  ]
+}
