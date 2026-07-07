@@ -272,6 +272,77 @@ class PartnerEnquiryCreate(BaseModel):
     partnership_type: str = ""
     message: str
 
+# ---------------- Models: Tickets ----------------
+VALID_STATUSES = {"open", "in_progress", "resolved", "closed"}
+VALID_PRIORITIES = {"low", "medium", "high", "urgent"}
+VALID_CATEGORIES = {"technical", "billing", "installation", "general"}
+VALID_ROLES = {"super_admin", "admin", "support"}
+
+class TicketNote(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    content: str
+    created_by: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class Ticket(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    ticket_number: str = ""
+    title: str
+    description: str
+    status: str = "open"
+    priority: str = "medium"
+    category: str = "general"
+    customer_name: str
+    customer_email: str = ""
+    customer_phone: str = ""
+    assigned_to: str = ""
+    notes: List[TicketNote] = []
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    resolved_at: Optional[datetime] = None
+
+class TicketCreate(BaseModel):
+    title: str
+    description: str
+    priority: str = "medium"
+    category: str = "general"
+    customer_name: str
+    customer_email: str = ""
+    customer_phone: str = ""
+    assigned_to: str = ""
+
+class TicketUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+    priority: Optional[str] = None
+    category: Optional[str] = None
+    assigned_to: Optional[str] = None
+
+class TicketNoteCreate(BaseModel):
+    content: str
+
+class PublicTicketCreate(BaseModel):
+    title: str
+    description: str
+    category: str = "general"
+    customer_name: str
+    customer_email: str = ""
+    customer_phone: str = ""
+
+# ---------------- Models: Admin Users ----------------
+class AdminUserCreate(BaseModel):
+    username: str
+    password: str
+    recovery_email: EmailStr
+    role: str = "support"
+
+class AdminUserUpdate(BaseModel):
+    recovery_email: Optional[EmailStr] = None
+    role: Optional[str] = None
+    password: Optional[str] = None
+
 # ---------------- Seed data ----------------
 SEED_PLANS = [
     # Monthly
@@ -313,7 +384,7 @@ async def seed_admin():
             "username": username,
             "password_hash": hash_password(password),
             "recovery_email": recovery_email,
-            "role": "admin",
+            "role": "super_admin",
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
         logger.info(f"Seeded admin user: {username}")
@@ -323,6 +394,9 @@ async def seed_admin():
             updates["password_hash"] = hash_password(password)
         if existing.get("recovery_email") != recovery_email:
             updates["recovery_email"] = recovery_email
+        # Promote legacy "admin" role to "super_admin" for the seed account
+        if existing.get("role") not in ("super_admin",):
+            updates["role"] = "super_admin"
         if updates:
             await db.admins.update_one({"username": username}, {"$set": updates})
             logger.info(f"Updated admin user: {username}")
@@ -465,11 +539,12 @@ async def admin_login(payload: LoginRequest):
         "token_type": "bearer",
         "username": admin["username"],
         "recovery_email": admin.get("recovery_email"),
+        "role": admin.get("role", "admin"),
     }
 
 @api_router.get("/auth/me")
 async def me(current: dict = Depends(get_current_admin)):
-    return {"username": current["username"], "recovery_email": current.get("recovery_email")}
+    return {"username": current["username"], "recovery_email": current.get("recovery_email"), "role": current.get("role", "admin")}
 
 def _mask_email(email: str) -> str:
     try:
@@ -563,6 +638,7 @@ async def admin_list_plans(current: dict = Depends(get_current_admin)):
 
 @api_router.post("/admin/plans", response_model=Plan)
 async def admin_create_plan(payload: PlanCreate, current: dict = Depends(get_current_admin)):
+    _require_write_role(current)
     plan = Plan(**payload.model_dump())
     doc = plan.model_dump()
     doc["created_at"] = doc["created_at"].isoformat()
@@ -571,6 +647,7 @@ async def admin_create_plan(payload: PlanCreate, current: dict = Depends(get_cur
 
 @api_router.patch("/admin/plans/{plan_id}", response_model=Plan)
 async def admin_update_plan(plan_id: str, payload: PlanUpdate, current: dict = Depends(get_current_admin)):
+    _require_write_role(current)
     updates = {k: v for k, v in payload.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
@@ -587,6 +664,7 @@ async def admin_update_plan(plan_id: str, payload: PlanUpdate, current: dict = D
 
 @api_router.delete("/admin/plans/{plan_id}")
 async def admin_delete_plan(plan_id: str, current: dict = Depends(get_current_admin)):
+    _require_write_role(current)
     result = await db.plans.delete_one({"id": plan_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Plan not found")
@@ -613,6 +691,7 @@ async def admin_mark_contact_read(contact_id: str, current: dict = Depends(get_c
 
 @api_router.delete("/admin/contacts/{contact_id}")
 async def admin_delete_contact(contact_id: str, current: dict = Depends(get_current_admin)):
+    _require_write_role(current)
     result = await db.contacts.delete_one({"id": contact_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Contact not found")
@@ -632,6 +711,7 @@ async def admin_list_team(current: dict = Depends(get_current_admin)):
 
 @api_router.post("/admin/team", response_model=TeamMember)
 async def admin_create_team(payload: TeamMemberCreate, current: dict = Depends(get_current_admin)):
+    _require_write_role(current)
     member = TeamMember(**payload.model_dump())
     doc = member.model_dump()
     doc["created_at"] = doc["created_at"].isoformat()
@@ -640,6 +720,7 @@ async def admin_create_team(payload: TeamMemberCreate, current: dict = Depends(g
 
 @api_router.patch("/admin/team/{member_id}", response_model=TeamMember)
 async def admin_update_team(member_id: str, payload: TeamMemberUpdate, current: dict = Depends(get_current_admin)):
+    _require_write_role(current)
     updates = {k: v for k, v in payload.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
@@ -656,6 +737,7 @@ async def admin_update_team(member_id: str, payload: TeamMemberUpdate, current: 
 
 @api_router.delete("/admin/team/{member_id}")
 async def admin_delete_team(member_id: str, current: dict = Depends(get_current_admin)):
+    _require_write_role(current)
     result = await db.team_members.delete_one({"id": member_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Team member not found")
@@ -675,6 +757,7 @@ async def admin_list_testimonials(current: dict = Depends(get_current_admin)):
 
 @api_router.post("/admin/testimonials", response_model=Testimonial)
 async def admin_create_testimonial(payload: TestimonialCreate, current: dict = Depends(get_current_admin)):
+    _require_write_role(current)
     item = Testimonial(**payload.model_dump())
     doc = item.model_dump()
     doc["created_at"] = doc["created_at"].isoformat()
@@ -683,6 +766,7 @@ async def admin_create_testimonial(payload: TestimonialCreate, current: dict = D
 
 @api_router.patch("/admin/testimonials/{t_id}", response_model=Testimonial)
 async def admin_update_testimonial(t_id: str, payload: TestimonialUpdate, current: dict = Depends(get_current_admin)):
+    _require_write_role(current)
     updates = {k: v for k, v in payload.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
@@ -699,6 +783,7 @@ async def admin_update_testimonial(t_id: str, payload: TestimonialUpdate, curren
 
 @api_router.delete("/admin/testimonials/{t_id}")
 async def admin_delete_testimonial(t_id: str, current: dict = Depends(get_current_admin)):
+    _require_write_role(current)
     result = await db.testimonials.delete_one({"id": t_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Testimonial not found")
@@ -750,9 +835,193 @@ async def admin_mark_partner_read(p_id: str, current: dict = Depends(get_current
 
 @api_router.delete("/admin/partner-enquiries/{p_id}")
 async def admin_delete_partner_enquiry(p_id: str, current: dict = Depends(get_current_admin)):
+    _require_write_role(current)
     result = await db.partner_enquiries.delete_one({"id": p_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Not found")
+    return {"message": "Deleted"}
+
+# ---------------- Helpers ----------------
+async def next_ticket_number() -> str:
+    """Atomic ticket number using a counters collection to avoid race conditions."""
+    result = await db.counters.find_one_and_update(
+        {"_id": "ticket_seq"},
+        {"$inc": {"seq": 1}},
+        upsert=True,
+        return_document=True,
+    )
+    seq = result["seq"]
+    return f"TKT-{seq:04d}"
+
+def _require_write_role(current: dict) -> None:
+    """Raises 403 if the caller is support-only (tickets only)."""
+    if current.get("role") == "support":
+        raise HTTPException(status_code=403, detail="Support role cannot modify this resource")
+
+def _parse_ticket_doc(d: dict) -> dict:
+    for field in ("created_at", "updated_at"):
+        if isinstance(d.get(field), str):
+            try: d[field] = datetime.fromisoformat(d[field])
+            except: d[field] = datetime.now(timezone.utc)
+    if d.get("resolved_at") and isinstance(d["resolved_at"], str):
+        try: d["resolved_at"] = datetime.fromisoformat(d["resolved_at"])
+        except: d["resolved_at"] = None
+    for note in d.get("notes", []):
+        if isinstance(note.get("created_at"), str):
+            try: note["created_at"] = datetime.fromisoformat(note["created_at"])
+            except: note["created_at"] = datetime.now(timezone.utc)
+    return d
+
+# ---------------- Routes: Public Tickets ----------------
+@api_router.post("/tickets", response_model=Ticket)
+async def public_create_ticket(payload: PublicTicketCreate):
+    if payload.category not in VALID_CATEGORIES:
+        raise HTTPException(status_code=400, detail="Invalid category")
+    ticket_number = await next_ticket_number()
+    ticket = Ticket(ticket_number=ticket_number, **payload.model_dump())
+    doc = ticket.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    doc["updated_at"] = doc["updated_at"].isoformat()
+    doc["resolved_at"] = None
+    doc["notes"] = []
+    await db.tickets.insert_one(doc)
+    return ticket
+
+# ---------------- Routes: Admin Tickets ----------------
+@api_router.get("/admin/tickets", response_model=List[Ticket])
+async def admin_list_tickets(
+    status: Optional[str] = None,
+    priority: Optional[str] = None,
+    current: dict = Depends(get_current_admin),
+):
+    query: dict = {}
+    if status: query["status"] = status
+    if priority: query["priority"] = priority
+    docs = await db.tickets.find(query, {"_id": 0}).sort([("created_at", -1)]).to_list(2000)
+    return [_parse_ticket_doc(d) for d in docs]
+
+@api_router.post("/admin/tickets", response_model=Ticket)
+async def admin_create_ticket(payload: TicketCreate, current: dict = Depends(get_current_admin)):
+    if current.get("role") not in ("super_admin", "admin"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    if payload.priority not in VALID_PRIORITIES:
+        raise HTTPException(status_code=400, detail="Invalid priority")
+    if payload.category not in VALID_CATEGORIES:
+        raise HTTPException(status_code=400, detail="Invalid category")
+    ticket_number = await next_ticket_number()
+    ticket = Ticket(ticket_number=ticket_number, **payload.model_dump())
+    doc = ticket.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    doc["updated_at"] = doc["updated_at"].isoformat()
+    doc["resolved_at"] = None
+    doc["notes"] = []
+    await db.tickets.insert_one(doc)
+    return ticket
+
+@api_router.patch("/admin/tickets/{ticket_id}", response_model=Ticket)
+async def admin_update_ticket(ticket_id: str, payload: TicketUpdate, current: dict = Depends(get_current_admin)):
+    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    if "status" in updates and updates["status"] not in VALID_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    if "priority" in updates and updates["priority"] not in VALID_PRIORITIES:
+        raise HTTPException(status_code=400, detail="Invalid priority")
+    now = datetime.now(timezone.utc)
+    updates["updated_at"] = now.isoformat()
+    if updates.get("status") == "resolved":
+        updates["resolved_at"] = now.isoformat()
+    result = await db.tickets.update_one({"id": ticket_id}, {"$set": updates})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    doc = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+    return _parse_ticket_doc(doc)
+
+@api_router.delete("/admin/tickets/{ticket_id}")
+async def admin_delete_ticket(ticket_id: str, current: dict = Depends(get_current_admin)):
+    if current.get("role") not in ("super_admin", "admin"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    result = await db.tickets.delete_one({"id": ticket_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    return {"message": "Deleted"}
+
+@api_router.post("/admin/tickets/{ticket_id}/notes")
+async def admin_add_ticket_note(ticket_id: str, payload: TicketNoteCreate, current: dict = Depends(get_current_admin)):
+    note = TicketNote(content=payload.content, created_by=current["username"])
+    note_doc = note.model_dump()
+    note_doc["created_at"] = note_doc["created_at"].isoformat()
+    result = await db.tickets.update_one(
+        {"id": ticket_id},
+        {"$push": {"notes": note_doc}, "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    return {"message": "Note added", "note": note}
+
+# ---------------- Routes: Admin User Management ----------------
+@api_router.get("/admin/users")
+async def admin_list_users(current: dict = Depends(get_current_admin)):
+    if current.get("role") != "super_admin":
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    docs = await db.admins.find({}, {"_id": 0, "password_hash": 0}).sort("created_at", 1).to_list(200)
+    return docs
+
+@api_router.post("/admin/users")
+async def admin_create_user(payload: AdminUserCreate, current: dict = Depends(get_current_admin)):
+    if current.get("role") != "super_admin":
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    if payload.role not in VALID_ROLES:
+        raise HTTPException(status_code=400, detail="Invalid role")
+    if len(payload.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    existing = await db.admins.find_one({"username": payload.username})
+    if existing:
+        raise HTTPException(status_code=400, detail="Username already exists")
+    doc = {
+        "username": payload.username,
+        "password_hash": hash_password(payload.password),
+        "recovery_email": payload.recovery_email,
+        "role": payload.role,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.admins.insert_one(doc)
+    return {"username": payload.username, "role": payload.role, "recovery_email": payload.recovery_email, "created_at": doc["created_at"]}
+
+@api_router.patch("/admin/users/{username}")
+async def admin_update_user(username: str, payload: AdminUserUpdate, current: dict = Depends(get_current_admin)):
+    if current.get("role") != "super_admin":
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    if username == current["username"] and payload.role and payload.role != "super_admin":
+        raise HTTPException(status_code=400, detail="Cannot downgrade your own role")
+    updates: dict = {}
+    if payload.recovery_email:
+        updates["recovery_email"] = str(payload.recovery_email)
+    if payload.role:
+        if payload.role not in VALID_ROLES:
+            raise HTTPException(status_code=400, detail="Invalid role")
+        updates["role"] = payload.role
+    if payload.password:
+        if len(payload.password) < 6:
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+        updates["password_hash"] = hash_password(payload.password)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    result = await db.admins.update_one({"username": username}, {"$set": updates})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    doc = await db.admins.find_one({"username": username}, {"_id": 0, "password_hash": 0})
+    return doc
+
+@api_router.delete("/admin/users/{username}")
+async def admin_delete_user(username: str, current: dict = Depends(get_current_admin)):
+    if current.get("role") != "super_admin":
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    if username == current["username"]:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    result = await db.admins.delete_one({"username": username})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
     return {"message": "Deleted"}
 
 # ---------------- App wiring ----------------
@@ -776,6 +1045,9 @@ async def on_startup():
     await db.team_members.create_index("id", unique=True)
     await db.testimonials.create_index("id", unique=True)
     await db.partner_enquiries.create_index("id", unique=True)
+    await db.tickets.create_index("id", unique=True)
+    await db.tickets.create_index("status")
+    await db.tickets.create_index("ticket_number")
     await seed_admin()
     await seed_plans()
     await seed_team()

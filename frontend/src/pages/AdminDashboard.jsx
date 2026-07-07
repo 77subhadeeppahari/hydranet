@@ -3,118 +3,129 @@ import { Link, Navigate } from "react-router-dom";
 import { api, formatApiErrorDetail } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { Logo } from "../components/Logo";
-import { LogOut, Plus, Edit3, Trash2, Mail, X, CheckCircle2, Package, Users, Star, Handshake } from "lucide-react";
+import {
+  LogOut, Plus, Edit3, Trash2, Mail, X, CheckCircle2, Package, Users,
+  Star, Handshake, Ticket as TicketIcon, ShieldCheck, MessageSquarePlus,
+  ChevronDown, Clock, AlertCircle, CheckCircle, XCircle,
+} from "lucide-react";
 import { toast } from "sonner";
 import { ImageUploadField } from "../components/ImageUploadField";
 
+// ─── Constants ────────────────────────────────────────────────────────────────
 const CATEGORIES = ["monthly", "six_month", "twelve_month", "welcome", "ott"];
-const EMPTY_PLAN = {
-  name: "", category: "monthly", speed_mbps: 50, price: 500,
-  validity_days: 30, validity_label: "30 Days", benefits: "",
-  popular: false, display_order: 0, active: true,
-};
-const EMPTY_MEMBER = {
-  name: "", role: "", image_url: "", bio: "",
-  linkedin: "", twitter: "", email: "",
-  display_order: 0, active: true,
-};
-const EMPTY_TESTIMONIAL = {
-  name: "", location: "", rating: 5, quote: "", image_url: "",
-  display_order: 0, active: true,
-};
+const TICKET_STATUSES = ["open", "in_progress", "resolved", "closed"];
+const TICKET_PRIORITIES = ["low", "medium", "high", "urgent"];
+const TICKET_CATEGORIES = ["technical", "billing", "installation", "general"];
+const ADMIN_ROLES = ["super_admin", "admin", "support"];
 
+const EMPTY_PLAN = { name: "", category: "monthly", speed_mbps: 50, price: 500, validity_days: 30, validity_label: "30 Days", benefits: "", popular: false, display_order: 0, active: true };
+const EMPTY_MEMBER = { name: "", role: "", image_url: "", bio: "", linkedin: "", twitter: "", email: "", display_order: 0, active: true };
+const EMPTY_TESTIMONIAL = { name: "", location: "", rating: 5, quote: "", image_url: "", display_order: 0, active: true };
+const EMPTY_TICKET = { title: "", description: "", priority: "medium", category: "general", customer_name: "", customer_email: "", customer_phone: "", assigned_to: "" };
+const EMPTY_USER = { username: "", password: "", recovery_email: "", role: "support" };
+
+const STATUS_META = {
+  open:        { label: "Open",        cls: "text-blue-400 bg-blue-400/10",    Icon: AlertCircle },
+  in_progress: { label: "In Progress", cls: "text-yellow-400 bg-yellow-400/10", Icon: Clock },
+  resolved:    { label: "Resolved",    cls: "text-emerald-400 bg-emerald-400/10", Icon: CheckCircle },
+  closed:      { label: "Closed",      cls: "text-slate-400 bg-slate-400/10",  Icon: XCircle },
+};
+const PRIORITY_CLS = { low: "text-slate-400", medium: "text-yellow-400", high: "text-orange-400", urgent: "text-red-400" };
+const ROLE_CLS = { super_admin: "text-purple-400 bg-purple-400/10", admin: "text-[#F26B21] bg-[#F26B21]/10", support: "text-blue-400 bg-blue-400/10" };
+
+// ─── Main Dashboard ───────────────────────────────────────────────────────────
 export default function AdminDashboard() {
   const { admin, loading: authLoading, logout } = useAuth();
-  const [tab, setTab] = useState("plans");
+  const [tab, setTab] = useState("tickets");
+  const [loading, setLoading] = useState(true);
+
+  // existing data
   const [plans, setPlans] = useState([]);
   const [contacts, setContacts] = useState([]);
   const [team, setTeam] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [testimonials, setTestimonials] = useState([]);
+  const [partnerEnquiries, setPartnerEnquiries] = useState([]);
+  // plans modal
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  // team modal
   const [editingMember, setEditingMember] = useState(null);
   const [showMemberForm, setShowMemberForm] = useState(false);
-  const [testimonials, setTestimonials] = useState([]);
+  // testimonials modal
   const [editingT, setEditingT] = useState(null);
   const [showTForm, setShowTForm] = useState(false);
-  const [partnerEnquiries, setPartnerEnquiries] = useState([]);
 
-  useEffect(() => {
-    if (!admin) return;
-    reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [admin]);
+  // tickets
+  const [tickets, setTickets] = useState([]);
+  const [showTicketForm, setShowTicketForm] = useState(false);
+  const [ticketDetail, setTicketDetail] = useState(null);
+
+  // users (super_admin only)
+  const [users, setUsers] = useState([]);
+  const [showUserForm, setShowUserForm] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+
+  useEffect(() => { if (admin) reload(); }, [admin]); // eslint-disable-line
 
   const reload = async () => {
     setLoading(true);
     try {
-      const [plansRes, contactsRes, teamRes, tRes, pRes] = await Promise.all([
+      const reqs = [
         api.get("/admin/plans"),
         api.get("/admin/contacts"),
         api.get("/admin/team"),
         api.get("/admin/testimonials"),
         api.get("/admin/partner-enquiries"),
-      ]);
-      setPlans(plansRes.data); setContacts(contactsRes.data); setTeam(teamRes.data); setTestimonials(tRes.data); setPartnerEnquiries(pRes.data);
+        api.get("/admin/tickets"),
+      ];
+      if (admin?.role === "super_admin") reqs.push(api.get("/admin/users"));
+      const results = await Promise.all(reqs);
+      setPlans(results[0].data);
+      setContacts(results[1].data);
+      setTeam(results[2].data);
+      setTestimonials(results[3].data);
+      setPartnerEnquiries(results[4].data);
+      setTickets(results[5].data);
+      if (admin?.role === "super_admin" && results[6]) setUsers(results[6].data);
     } catch (err) { toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Failed to load"); }
     finally { setLoading(false); }
   };
 
-  const markPartnerRead = async (id) => { try { await api.patch(`/admin/partner-enquiries/${id}/read`); reload(); } catch { toast.error("Failed"); } };
-  const deletePartner = async (id) => { if (!window.confirm("Delete this enquiry?")) return; try { await api.delete(`/admin/partner-enquiries/${id}`); reload(); toast.success("Deleted"); } catch { toast.error("Failed"); } };
-
-  if (authLoading) return <div className="min-h-screen grid place-items-center text-slate-400">Loading…</div>;
-  if (!admin) return <Navigate to="/admin/login" replace />;
-
+  // ── Plan handlers ──
   const savePlan = async (data) => {
     try {
-      if (editing?.id) {
-        await api.patch(`/admin/plans/${editing.id}`, data);
-        toast.success("Plan updated");
-      } else {
-        await api.post("/admin/plans", data);
-        toast.success("Plan created");
-      }
+      if (editing?.id) { await api.patch(`/admin/plans/${editing.id}`, data); toast.success("Plan updated"); }
+      else { await api.post("/admin/plans", data); toast.success("Plan created"); }
       setShowForm(false); setEditing(null); reload();
     } catch (err) { toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Save failed"); }
   };
-
   const deletePlan = async (id) => {
     if (!window.confirm("Delete this plan permanently?")) return;
-    try {
-      await api.delete(`/admin/plans/${id}`);
-      toast.success("Plan deleted"); reload();
-    } catch (err) { toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Delete failed"); }
+    try { await api.delete(`/admin/plans/${id}`); toast.success("Plan deleted"); reload(); }
+    catch (err) { toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Delete failed"); }
   };
 
-  const markRead = async (id) => {
-    try { await api.patch(`/admin/contacts/${id}/read`); reload(); }
-    catch (err) { toast.error("Failed"); }
-  };
+  // ── Contact handlers ──
+  const markRead = async (id) => { try { await api.patch(`/admin/contacts/${id}/read`); reload(); } catch { toast.error("Failed"); } };
   const deleteContact = async (id) => {
     if (!window.confirm("Delete this enquiry?")) return;
-    try { await api.delete(`/admin/contacts/${id}`); reload(); toast.success("Deleted"); }
-    catch (err) { toast.error("Failed"); }
+    try { await api.delete(`/admin/contacts/${id}`); reload(); toast.success("Deleted"); } catch { toast.error("Failed"); }
   };
 
+  // ── Team handlers ──
   const saveMember = async (data) => {
     try {
-      if (editingMember?.id) {
-        await api.patch(`/admin/team/${editingMember.id}`, data);
-        toast.success("Team member updated");
-      } else {
-        await api.post("/admin/team", data);
-        toast.success("Team member added");
-      }
+      if (editingMember?.id) { await api.patch(`/admin/team/${editingMember.id}`, data); toast.success("Team member updated"); }
+      else { await api.post("/admin/team", data); toast.success("Team member added"); }
       setShowMemberForm(false); setEditingMember(null); reload();
     } catch (err) { toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Save failed"); }
   };
   const deleteMember = async (id) => {
     if (!window.confirm("Remove this team member?")) return;
-    try { await api.delete(`/admin/team/${id}`); reload(); toast.success("Member removed"); }
-    catch (err) { toast.error("Failed"); }
+    try { await api.delete(`/admin/team/${id}`); reload(); toast.success("Member removed"); } catch { toast.error("Failed"); }
   };
 
+  // ── Testimonial handlers ──
   const saveTestimonial = async (data) => {
     try {
       if (editingT?.id) { await api.patch(`/admin/testimonials/${editingT.id}`, data); toast.success("Testimonial updated"); }
@@ -124,11 +135,66 @@ export default function AdminDashboard() {
   };
   const deleteTestimonial = async (id) => {
     if (!window.confirm("Delete this testimonial?")) return;
-    try { await api.delete(`/admin/testimonials/${id}`); reload(); toast.success("Deleted"); }
-    catch (err) { toast.error("Failed"); }
+    try { await api.delete(`/admin/testimonials/${id}`); reload(); toast.success("Deleted"); } catch { toast.error("Failed"); }
   };
 
-  const unreadCount = contacts.filter((c) => !c.read).length;
+  // ── Partner handlers ──
+  const markPartnerRead = async (id) => { try { await api.patch(`/admin/partner-enquiries/${id}/read`); reload(); } catch { toast.error("Failed"); } };
+  const deletePartner = async (id) => {
+    if (!window.confirm("Delete this enquiry?")) return;
+    try { await api.delete(`/admin/partner-enquiries/${id}`); reload(); toast.success("Deleted"); } catch { toast.error("Failed"); }
+  };
+
+  // ── Ticket handlers ──
+  const saveTicket = async (data) => {
+    try { await api.post("/admin/tickets", data); toast.success("Ticket created"); setShowTicketForm(false); reload(); }
+    catch (err) { toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Save failed"); }
+  };
+  const updateTicket = async (id, data) => {
+    try {
+      const { data: updated } = await api.patch(`/admin/tickets/${id}`, data);
+      setTickets(ts => ts.map(t => t.id === id ? updated : t));
+      if (ticketDetail?.id === id) setTicketDetail(updated);
+      toast.success("Ticket updated");
+    } catch (err) { toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Update failed"); }
+  };
+  const deleteTicket = async (id) => {
+    if (!window.confirm("Delete this ticket permanently?")) return;
+    try { await api.delete(`/admin/tickets/${id}`); setTicketDetail(null); reload(); toast.success("Ticket deleted"); }
+    catch { toast.error("Failed"); }
+  };
+  const addNote = async (id, content) => {
+    try {
+      await api.post(`/admin/tickets/${id}/notes`, { content });
+      const { data } = await api.get("/admin/tickets");
+      setTickets(data);
+      const updated = data.find(t => t.id === id);
+      if (updated) setTicketDetail(updated);
+      toast.success("Note added");
+    } catch { toast.error("Failed to add note"); }
+  };
+
+  // ── User handlers ──
+  const saveUser = async (data) => {
+    try {
+      if (editingUser) { await api.patch(`/admin/users/${editingUser.username}`, data); toast.success("User updated"); }
+      else { await api.post("/admin/users", data); toast.success("User created"); }
+      setShowUserForm(false); setEditingUser(null); reload();
+    } catch (err) { toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Save failed"); }
+  };
+  const deleteUser = async (username) => {
+    if (!window.confirm(`Delete user "${username}"? This cannot be undone.`)) return;
+    try { await api.delete(`/admin/users/${username}`); reload(); toast.success("User deleted"); }
+    catch (err) { toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Failed"); }
+  };
+
+  if (authLoading) return <div className="min-h-screen grid place-items-center text-slate-400">Loading…</div>;
+  if (!admin) return <Navigate to="/admin/login" replace />;
+
+  const openTickets = tickets.filter(t => t.status === "open" || t.status === "in_progress").length;
+  const unreadContacts = contacts.filter(c => !c.read).length;
+  const unreadPartners = partnerEnquiries.filter(p => !p.read).length;
+  const canWrite = admin.role === "super_admin" || admin.role === "admin";
 
   return (
     <div className="min-h-screen bg-[#020617]" data-testid="admin-dashboard">
@@ -149,32 +215,59 @@ export default function AdminDashboard() {
       </div>
 
       <div className="mx-auto max-w-7xl px-6 py-10">
-        <div className="mb-8 flex items-center justify-between flex-wrap gap-4">
+        {/* Header */}
+        <div className="mb-8 flex items-start justify-between flex-wrap gap-4">
           <div>
             <h1 className="font-display text-3xl font-bold text-white">Welcome, {admin.username}</h1>
-            <p className="text-slate-400 text-sm mt-1">Manage plan pricing and customer enquiries.</p>
+            <div className="flex items-center gap-2 mt-1">
+              <p className="text-slate-400 text-sm">Manage your broadband platform.</p>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-mono-metric capitalize ${ROLE_CLS[admin.role] || "text-slate-400 bg-slate-400/10"}`}>
+                {admin.role?.replace(/_/g, " ")}
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-1 p-1 rounded-full border border-white/10 bg-[#0F172A]/60">
+          {/* Tab bar */}
+          <div className="flex flex-wrap items-center gap-1 p-1 rounded-full border border-white/10 bg-[#0F172A]/60">
+            <TabBtn active={tab === "tickets"} onClick={() => setTab("tickets")} testId="admin-tab-tickets">
+              <TicketIcon size={14} /> Tickets
+              {openTickets > 0 && <Badge>{openTickets}</Badge>}
+            </TabBtn>
             <TabBtn active={tab === "plans"} onClick={() => setTab("plans")} testId="admin-tab-plans">
-              <Package size={14} /> Plans <span className="font-mono-metric text-xs text-slate-500">({plans.length})</span>
+              <Package size={14} /> Plans
             </TabBtn>
             <TabBtn active={tab === "team"} onClick={() => setTab("team")} testId="admin-tab-team">
-              <Users size={14} /> Team <span className="font-mono-metric text-xs text-slate-500">({team.length})</span>
+              <Users size={14} /> Team
             </TabBtn>
             <TabBtn active={tab === "testimonials"} onClick={() => setTab("testimonials")} testId="admin-tab-testimonials">
-              <Star size={14} /> Reviews <span className="font-mono-metric text-xs text-slate-500">({testimonials.length})</span>
+              <Star size={14} /> Reviews
             </TabBtn>
             <TabBtn active={tab === "partners"} onClick={() => setTab("partners")} testId="admin-tab-partners">
-              <Handshake size={14} /> Partners {partnerEnquiries.filter(p => !p.read).length > 0 && <span className="ml-1 font-mono-metric text-xs bg-[#F26B21] text-white px-1.5 rounded-full">{partnerEnquiries.filter(p => !p.read).length}</span>}
+              <Handshake size={14} /> Partners
+              {unreadPartners > 0 && <Badge>{unreadPartners}</Badge>}
             </TabBtn>
             <TabBtn active={tab === "contacts"} onClick={() => setTab("contacts")} testId="admin-tab-contacts">
-              <Mail size={14} /> Enquiries {unreadCount > 0 && <span className="ml-1 font-mono-metric text-xs bg-[#F26B21] text-white px-1.5 rounded-full">{unreadCount}</span>}
+              <Mail size={14} /> Enquiries
+              {unreadContacts > 0 && <Badge>{unreadContacts}</Badge>}
             </TabBtn>
+            {admin.role === "super_admin" && (
+              <TabBtn active={tab === "users"} onClick={() => setTab("users")} testId="admin-tab-users">
+                <ShieldCheck size={14} /> Users
+              </TabBtn>
+            )}
           </div>
         </div>
 
-        {loading ? <div className="text-slate-400">Loading…</div> : (
-          tab === "plans" ? (
+        {loading ? <div className="text-slate-400 py-12 text-center">Loading…</div> : (
+          tab === "tickets" ? (
+            <TicketsTable
+              tickets={tickets}
+              adminRole={admin.role}
+              onView={setTicketDetail}
+              onNew={() => setShowTicketForm(true)}
+              onDelete={deleteTicket}
+              onUpdate={updateTicket}
+            />
+          ) : tab === "plans" ? (
             <PlansTable plans={plans} onEdit={(p) => { setEditing(p); setShowForm(true); }} onDelete={deletePlan} onNew={() => { setEditing(null); setShowForm(true); }} />
           ) : tab === "team" ? (
             <TeamTable team={team} onEdit={(m) => { setEditingMember(m); setShowMemberForm(true); }} onDelete={deleteMember} onNew={() => { setEditingMember(null); setShowMemberForm(true); }} />
@@ -182,27 +275,400 @@ export default function AdminDashboard() {
             <TestimonialsTable items={testimonials} onEdit={(t) => { setEditingT(t); setShowTForm(true); }} onDelete={deleteTestimonial} onNew={() => { setEditingT(null); setShowTForm(true); }} />
           ) : tab === "partners" ? (
             <PartnerEnquiriesTable items={partnerEnquiries} onRead={markPartnerRead} onDelete={deletePartner} />
-          ) : (
+          ) : tab === "contacts" ? (
             <ContactsTable contacts={contacts} onRead={markRead} onDelete={deleteContact} />
-          )
+          ) : tab === "users" && admin.role === "super_admin" ? (
+            <UsersTable users={users} currentUsername={admin.username} onEdit={(u) => { setEditingUser(u); setShowUserForm(true); }} onDelete={deleteUser} onNew={() => { setEditingUser(null); setShowUserForm(true); }} />
+          ) : null
         )}
       </div>
 
+      {/* Modals */}
       {showForm && <PlanForm initial={editing} onSave={savePlan} onClose={() => { setShowForm(false); setEditing(null); }} />}
       {showMemberForm && <MemberForm initial={editingMember} onSave={saveMember} onClose={() => { setShowMemberForm(false); setEditingMember(null); }} />}
       {showTForm && <TestimonialForm initial={editingT} onSave={saveTestimonial} onClose={() => { setShowTForm(false); setEditingT(null); }} />}
+      {showTicketForm && <TicketForm onSave={saveTicket} onClose={() => setShowTicketForm(false)} />}
+      {ticketDetail && (
+        <TicketDetailModal
+          ticket={ticketDetail}
+          adminRole={admin.role}
+          onUpdate={updateTicket}
+          onDelete={deleteTicket}
+          onAddNote={addNote}
+          onClose={() => setTicketDetail(null)}
+        />
+      )}
+      {showUserForm && (
+        <UserForm initial={editingUser} onSave={saveUser} onClose={() => { setShowUserForm(false); setEditingUser(null); }} />
+      )}
     </div>
   );
 }
 
+// ─── Shared primitives ─────────────────────────────────────────────────────────
 const TabBtn = ({ active, onClick, children, testId }) => (
-  <button
-    onClick={onClick}
-    data-testid={testId}
+  <button onClick={onClick} data-testid={testId}
     className={`px-4 py-2 text-sm rounded-full font-medium inline-flex items-center gap-2 transition-all ${active ? "bg-[#F26B21] text-white" : "text-slate-300 hover:text-white"}`}
   >{children}</button>
 );
+const Badge = ({ children }) => (
+  <span className="ml-1 font-mono-metric text-xs bg-[#F26B21] text-white px-1.5 rounded-full">{children}</span>
+);
+const Th = ({ children }) => <th className="text-left px-4 py-3 text-xs uppercase tracking-widest font-mono-metric font-medium text-slate-400">{children}</th>;
+const Td = ({ children, className = "" }) => <td className={`px-4 py-3 text-slate-300 ${className}`}>{children}</td>;
+const inputCls = "w-full rounded-md bg-[#020617] border border-white/10 focus:border-[#F26B21] outline-none px-3 py-2.5 text-white text-sm";
+const FormField = ({ label, children }) => (
+  <div>
+    <label className="block text-xs uppercase tracking-widest font-mono-metric text-slate-400 mb-2">{label}</label>
+    {children}
+  </div>
+);
 
+// ─── Tickets ──────────────────────────────────────────────────────────────────
+function TicketsTable({ tickets, adminRole, onView, onNew, onDelete, onUpdate }) {
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [priorityFilter, setPriorityFilter] = useState("all");
+  const canWrite = adminRole === "super_admin" || adminRole === "admin";
+
+  const filtered = tickets.filter(t =>
+    (statusFilter === "all" || t.status === statusFilter) &&
+    (priorityFilter === "all" || t.priority === priorityFilter)
+  );
+
+  return (
+    <div>
+      <div className="mb-4 flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+            className="rounded-md bg-[#0F172A] border border-white/10 text-slate-300 text-sm px-3 py-2 outline-none focus:border-[#F26B21]">
+            <option value="all">All Statuses</option>
+            {TICKET_STATUSES.map(s => <option key={s} value={s}>{STATUS_META[s]?.label}</option>)}
+          </select>
+          <select value={priorityFilter} onChange={e => setPriorityFilter(e.target.value)}
+            className="rounded-md bg-[#0F172A] border border-white/10 text-slate-300 text-sm px-3 py-2 outline-none focus:border-[#F26B21]">
+            <option value="all">All Priorities</option>
+            {TICKET_PRIORITIES.map(p => <option key={p} value={p} className="capitalize">{p}</option>)}
+          </select>
+          <span className="text-slate-500 text-xs font-mono-metric">{filtered.length} ticket{filtered.length !== 1 ? "s" : ""}</span>
+        </div>
+        {canWrite && (
+          <button onClick={onNew} className="hn-btn-primary inline-flex items-center gap-2 text-sm !py-2">
+            <Plus size={14} /> New Ticket
+          </button>
+        )}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="text-slate-400 py-16 text-center">
+          <TicketIcon size={32} className="mx-auto mb-3 opacity-30" />
+          <p>No tickets found.</p>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-white/10 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-[#0F172A]">
+              <tr><Th>#</Th><Th>Title</Th><Th>Customer</Th><Th>Category</Th><Th>Priority</Th><Th>Status</Th><Th>Assigned</Th><Th>Actions</Th></tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {filtered.map(t => {
+                const sm = STATUS_META[t.status] || STATUS_META.open;
+                return (
+                  <tr key={t.id} className="hover:bg-white/[0.02] cursor-pointer" onClick={() => onView(t)}>
+                    <Td><span className="font-mono-metric text-xs text-slate-500">{t.ticket_number}</span></Td>
+                    <Td className="font-medium text-white max-w-[200px] truncate">{t.title}</Td>
+                    <Td>
+                      <div className="text-white text-xs">{t.customer_name}</div>
+                      {t.customer_phone && <div className="text-slate-500 text-xs">{t.customer_phone}</div>}
+                    </Td>
+                    <Td><span className="text-xs font-mono-metric uppercase text-[#F26B21]">{t.category}</span></Td>
+                    <Td><span className={`text-xs font-mono-metric capitalize font-semibold ${PRIORITY_CLS[t.priority]}`}>{t.priority}</span></Td>
+                    <Td>
+                      <span className={`inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full font-mono-metric ${sm.cls}`}>
+                        <sm.Icon size={11} />{sm.label}
+                      </span>
+                    </Td>
+                    <Td><span className="text-xs text-slate-400">{t.assigned_to || "—"}</span></Td>
+                    <Td onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center gap-1">
+                        {canWrite && t.status !== "closed" && (
+                          <button onClick={() => onUpdate(t.id, { status: t.status === "open" ? "in_progress" : t.status === "in_progress" ? "resolved" : "closed" })}
+                            className="p-1.5 rounded hover:bg-white/5 text-emerald-400 text-xs font-mono-metric" title="Advance status">
+                            <ChevronDown size={13} />
+                          </button>
+                        )}
+                        {(adminRole === "super_admin" || adminRole === "admin") && (
+                          <button onClick={() => onDelete(t.id)} className="p-1.5 rounded hover:bg-red-500/10 text-red-400"><Trash2 size={13} /></button>
+                        )}
+                      </div>
+                    </Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TicketDetailModal({ ticket, adminRole, onUpdate, onDelete, onAddNote, onClose }) {
+  const [noteText, setNoteText] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
+  const canWrite = adminRole === "super_admin" || adminRole === "admin";
+  const sm = STATUS_META[ticket.status] || STATUS_META.open;
+
+  const handleAddNote = async () => {
+    if (!noteText.trim()) return;
+    setSavingNote(true);
+    await onAddNote(ticket.id, noteText.trim());
+    setNoteText("");
+    setSavingNote(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto">
+      <div className="w-full max-w-2xl hn-card rounded-2xl p-8 my-8">
+        {/* Header */}
+        <div className="flex items-start justify-between mb-6 gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="font-mono-metric text-xs text-slate-500">{ticket.ticket_number}</span>
+              <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-mono-metric ${sm.cls}`}>
+                <sm.Icon size={10} />{sm.label}
+              </span>
+              <span className={`text-xs font-mono-metric capitalize font-semibold ${PRIORITY_CLS[ticket.priority]}`}>{ticket.priority}</span>
+            </div>
+            <h2 className="font-display text-2xl font-bold text-white">{ticket.title}</h2>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-md text-slate-400 flex-shrink-0"><X size={18} /></button>
+        </div>
+
+        {/* Customer info */}
+        <div className="grid grid-cols-2 gap-3 mb-6 p-4 rounded-lg bg-[#020617] border border-white/5">
+          <div><div className="text-xs text-slate-500 mb-0.5">Customer</div><div className="text-white text-sm font-medium">{ticket.customer_name}</div></div>
+          {ticket.customer_email && <div><div className="text-xs text-slate-500 mb-0.5">Email</div><div className="text-slate-300 text-sm">{ticket.customer_email}</div></div>}
+          {ticket.customer_phone && <div><div className="text-xs text-slate-500 mb-0.5">Phone</div><div className="text-slate-300 text-sm">{ticket.customer_phone}</div></div>}
+          <div><div className="text-xs text-slate-500 mb-0.5">Category</div><div className="text-[#F26B21] text-xs font-mono-metric uppercase">{ticket.category}</div></div>
+          <div><div className="text-xs text-slate-500 mb-0.5">Assigned To</div><div className="text-slate-300 text-sm">{ticket.assigned_to || "—"}</div></div>
+        </div>
+
+        {/* Description */}
+        <div className="mb-6">
+          <div className="text-xs text-slate-500 uppercase tracking-widest font-mono-metric mb-2">Description</div>
+          <div className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap">{ticket.description}</div>
+        </div>
+
+        {/* Update controls */}
+        {canWrite && (
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            <FormField label="Update Status">
+              <select value={ticket.status} onChange={e => onUpdate(ticket.id, { status: e.target.value })} className={inputCls}>
+                {TICKET_STATUSES.map(s => <option key={s} value={s}>{STATUS_META[s]?.label}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Priority">
+              <select value={ticket.priority} onChange={e => onUpdate(ticket.id, { priority: e.target.value })} className={inputCls}>
+                {TICKET_PRIORITIES.map(p => <option key={p} value={p} className="capitalize">{p}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Assign To">
+              <input value={ticket.assigned_to} onChange={e => onUpdate(ticket.id, { assigned_to: e.target.value })}
+                onBlur={e => onUpdate(ticket.id, { assigned_to: e.target.value })}
+                placeholder="Username" className={inputCls} />
+            </FormField>
+          </div>
+        )}
+
+        {/* Notes */}
+        <div className="mb-6">
+          <div className="text-xs text-slate-500 uppercase tracking-widest font-mono-metric mb-3">Internal Notes ({ticket.notes?.length || 0})</div>
+          {ticket.notes?.length > 0 ? (
+            <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
+              {ticket.notes.map(n => (
+                <div key={n.id} className="p-3 rounded-lg bg-[#020617] border border-white/5">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-medium text-[#F26B21]">{n.created_by}</span>
+                    <span className="text-xs text-slate-600">{new Date(n.created_at).toLocaleString()}</span>
+                  </div>
+                  <p className="text-slate-300 text-sm">{n.content}</p>
+                </div>
+              ))}
+            </div>
+          ) : <p className="text-slate-600 text-sm mb-3">No notes yet.</p>}
+
+          <div className="flex gap-2">
+            <input value={noteText} onChange={e => setNoteText(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && !e.shiftKey && handleAddNote()}
+              placeholder="Add an internal note…" className={`${inputCls} flex-1`} />
+            <button onClick={handleAddNote} disabled={savingNote || !noteText.trim()}
+              className="hn-btn-primary !py-2 !px-4 text-sm inline-flex items-center gap-1.5 disabled:opacity-50">
+              <MessageSquarePlus size={14} /> Add
+            </button>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between pt-4 border-t border-white/5">
+          <div className="text-xs text-slate-600">
+            Created {new Date(ticket.created_at).toLocaleDateString()}
+            {ticket.resolved_at && <> · Resolved {new Date(ticket.resolved_at).toLocaleDateString()}</>}
+          </div>
+          {(adminRole === "super_admin" || adminRole === "admin") && (
+            <button onClick={() => { onDelete(ticket.id); onClose(); }}
+              className="inline-flex items-center gap-2 text-red-400 hover:text-red-300 text-sm px-3 py-1.5 rounded-md hover:bg-red-400/10 transition-colors">
+              <Trash2 size={14} /> Delete Ticket
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TicketForm({ onSave, onClose }) {
+  const [form, setForm] = useState({ ...EMPTY_TICKET });
+  const upd = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+  const submit = e => { e.preventDefault(); onSave(form); };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm grid place-items-center p-4">
+      <div className="w-full max-w-2xl hn-card rounded-2xl p-8 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="font-display text-2xl font-bold text-white">New Ticket</h2>
+          <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-md text-slate-400"><X size={18} /></button>
+        </div>
+        <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="md:col-span-2">
+            <FormField label="Title"><input required value={form.title} onChange={upd("title")} className={inputCls} placeholder="Brief description of the issue" /></FormField>
+          </div>
+          <FormField label="Customer Name"><input required value={form.customer_name} onChange={upd("customer_name")} className={inputCls} /></FormField>
+          <FormField label="Phone">
+            <input value={form.customer_phone} onChange={upd("customer_phone")} className={inputCls} placeholder="+91 xxxxx xxxxx" />
+          </FormField>
+          <FormField label="Email"><input type="email" value={form.customer_email} onChange={upd("customer_email")} className={inputCls} /></FormField>
+          <FormField label="Category">
+            <select value={form.category} onChange={upd("category")} className={inputCls}>
+              {TICKET_CATEGORIES.map(c => <option key={c} value={c} className="capitalize">{c}</option>)}
+            </select>
+          </FormField>
+          <FormField label="Priority">
+            <select value={form.priority} onChange={upd("priority")} className={inputCls}>
+              {TICKET_PRIORITIES.map(p => <option key={p} value={p} className="capitalize">{p}</option>)}
+            </select>
+          </FormField>
+          <FormField label="Assign To"><input value={form.assigned_to} onChange={upd("assigned_to")} className={inputCls} placeholder="Admin username (optional)" /></FormField>
+          <div className="md:col-span-2">
+            <FormField label="Description"><textarea required rows={4} value={form.description} onChange={upd("description")} className={inputCls} placeholder="Detailed description of the issue…" /></FormField>
+          </div>
+          <div className="md:col-span-2 flex justify-end gap-3 mt-2">
+            <button type="button" onClick={onClose} className="hn-btn-secondary text-sm !py-2">Cancel</button>
+            <button type="submit" className="hn-btn-primary text-sm !py-2">Create Ticket</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Users ────────────────────────────────────────────────────────────────────
+function UsersTable({ users, currentUsername, onEdit, onDelete, onNew }) {
+  return (
+    <div>
+      <div className="mb-4 flex items-center justify-between">
+        <p className="text-slate-400 text-sm">Manage admin accounts and their permissions.</p>
+        <button onClick={onNew} className="hn-btn-primary inline-flex items-center gap-2 text-sm !py-2">
+          <Plus size={14} /> New User
+        </button>
+      </div>
+      <div className="rounded-xl border border-white/10 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-[#0F172A]">
+            <tr><Th>Username</Th><Th>Role</Th><Th>Recovery Email</Th><Th>Created</Th><Th>Actions</Th></tr>
+          </thead>
+          <tbody className="divide-y divide-white/5">
+            {users.map(u => (
+              <tr key={u.username} className="hover:bg-white/[0.02]">
+                <Td>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-white">{u.username}</span>
+                    {u.username === currentUsername && <span className="text-xs text-slate-500 font-mono-metric">(you)</span>}
+                  </div>
+                </Td>
+                <Td>
+                  <span className={`inline-block text-xs px-2 py-0.5 rounded-full font-mono-metric capitalize ${ROLE_CLS[u.role] || "text-slate-400 bg-slate-400/10"}`}>
+                    {u.role?.replace(/_/g, " ")}
+                  </span>
+                </Td>
+                <Td className="text-slate-400">{u.recovery_email || "—"}</Td>
+                <Td className="text-slate-500 text-xs">{u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}</Td>
+                <Td>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => onEdit(u)} className="p-2 rounded-md hover:bg-white/5 text-slate-300"><Edit3 size={14} /></button>
+                    {u.username !== currentUsername && (
+                      <button onClick={() => onDelete(u.username)} className="p-2 rounded-md hover:bg-red-500/10 text-red-400"><Trash2 size={14} /></button>
+                    )}
+                  </div>
+                </Td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function UserForm({ initial, onSave, onClose }) {
+  const isEdit = !!initial;
+  const [form, setForm] = useState(initial ? { recovery_email: initial.recovery_email || "", role: initial.role || "support", password: "" } : { ...EMPTY_USER });
+  const upd = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+
+  const submit = e => {
+    e.preventDefault();
+    const payload = isEdit
+      ? { recovery_email: form.recovery_email, role: form.role, ...(form.password ? { password: form.password } : {}) }
+      : form;
+    onSave(payload);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm grid place-items-center p-4">
+      <div className="w-full max-w-lg hn-card rounded-2xl p-8">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="font-display text-2xl font-bold text-white">{isEdit ? `Edit ${initial.username}` : "New Admin User"}</h2>
+          <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-md text-slate-400"><X size={18} /></button>
+        </div>
+        <form onSubmit={submit} className="space-y-4">
+          {!isEdit && (
+            <FormField label="Username">
+              <input required value={form.username} onChange={upd("username")} className={inputCls} placeholder="e.g. support1" autoComplete="off" />
+            </FormField>
+          )}
+          <FormField label="Role">
+            <select value={form.role} onChange={upd("role")} className={inputCls}>
+              {ADMIN_ROLES.map(r => (
+                <option key={r} value={r}>{r === "super_admin" ? "Super Admin — full access" : r === "admin" ? "Admin — manage content & tickets" : "Support — manage tickets only"}</option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label="Recovery Email">
+            <input required={!isEdit} type="email" value={form.recovery_email} onChange={upd("recovery_email")} className={inputCls} placeholder="used for password reset" />
+          </FormField>
+          <FormField label={isEdit ? "New Password (leave blank to keep current)" : "Password"}>
+            <input required={!isEdit} type="password" value={form.password} onChange={upd("password")} className={inputCls} placeholder={isEdit ? "Leave blank to keep unchanged" : "Min 6 characters"} autoComplete="new-password" />
+          </FormField>
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={onClose} className="hn-btn-secondary text-sm !py-2">Cancel</button>
+            <button type="submit" className="hn-btn-primary text-sm !py-2">{isEdit ? "Save Changes" : "Create User"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Existing components (unchanged) ──────────────────────────────────────────
 function PlansTable({ plans, onEdit, onDelete, onNew }) {
   return (
     <div>
@@ -213,10 +679,8 @@ function PlansTable({ plans, onEdit, onDelete, onNew }) {
       </div>
       <div className="rounded-xl border border-white/10 overflow-hidden">
         <table className="w-full text-sm" data-testid="admin-plans-table">
-          <thead className="bg-[#0F172A] text-slate-400">
-            <tr>
-              <Th>Name</Th><Th>Category</Th><Th>Speed</Th><Th>Price ₹</Th><Th>Validity</Th><Th>Popular</Th><Th>Active</Th><Th>Actions</Th>
-            </tr>
+          <thead className="bg-[#0F172A]">
+            <tr><Th>Name</Th><Th>Category</Th><Th>Speed</Th><Th>Price ₹</Th><Th>Validity</Th><Th>Popular</Th><Th>Active</Th><Th>Actions</Th></tr>
           </thead>
           <tbody className="divide-y divide-white/5">
             {plans.map((p) => (
@@ -261,13 +725,9 @@ function ContactsTable({ contacts, onRead, onDelete }) {
             </div>
             <div className="flex items-center gap-2">
               {!c.read && (
-                <button onClick={() => onRead(c.id)} className="p-2 rounded-md hover:bg-white/5 text-emerald-400" title="Mark read" data-testid={`admin-contact-read-${c.id}`}>
-                  <CheckCircle2 size={16} />
-                </button>
+                <button onClick={() => onRead(c.id)} className="p-2 rounded-md hover:bg-white/5 text-emerald-400" data-testid={`admin-contact-read-${c.id}`}><CheckCircle2 size={16} /></button>
               )}
-              <button onClick={() => onDelete(c.id)} className="p-2 rounded-md hover:bg-red-500/10 text-red-400" data-testid={`admin-contact-delete-${c.id}`}>
-                <Trash2 size={16} />
-              </button>
+              <button onClick={() => onDelete(c.id)} className="p-2 rounded-md hover:bg-red-500/10 text-red-400" data-testid={`admin-contact-delete-${c.id}`}><Trash2 size={16} /></button>
             </div>
           </div>
         </div>
@@ -276,8 +736,89 @@ function ContactsTable({ contacts, onRead, onDelete }) {
   );
 }
 
-const Th = ({ children }) => <th className="text-left px-4 py-3 text-xs uppercase tracking-widest font-mono-metric font-medium">{children}</th>;
-const Td = ({ children, className = "" }) => <td className={`px-4 py-3 text-slate-300 ${className}`}>{children}</td>;
+function PartnerEnquiriesTable({ items, onRead, onDelete }) {
+  if (items.length === 0) return <div className="text-slate-400 py-12 text-center">No partner enquiries yet.</div>;
+  return (
+    <div className="space-y-3" data-testid="admin-partners-list">
+      {items.map((p) => (
+        <div key={p.id} className={`hn-card rounded-xl p-6 ${!p.read ? "border-[#F26B21]/40" : ""}`} data-testid={`admin-partner-${p.id}`}>
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="font-display text-lg font-semibold text-white">{p.name}</span>
+                {p.company && <span className="text-slate-400 text-sm">· {p.company}</span>}
+                {!p.read && <span className="font-mono-metric text-[10px] uppercase tracking-widest bg-[#F26B21]/20 text-[#F26B21] px-2 py-0.5 rounded-full">New</span>}
+              </div>
+              <div className="text-slate-400 text-sm mt-1">{p.email} · {p.phone} · {p.city || "City n/a"}</div>
+              <div className="text-[#F26B21] text-xs uppercase tracking-widest font-mono-metric mt-2">{p.partnership_type}</div>
+              <div className="text-slate-400 text-sm mt-3 whitespace-pre-line leading-relaxed">{p.message}</div>
+            </div>
+            <div className="flex items-center gap-2">
+              {!p.read && <button onClick={() => onRead(p.id)} className="p-2 rounded-md hover:bg-white/5 text-emerald-400" data-testid={`admin-partner-read-${p.id}`}><CheckCircle2 size={16} /></button>}
+              <button onClick={() => onDelete(p.id)} className="p-2 rounded-md hover:bg-red-500/10 text-red-400" data-testid={`admin-partner-delete-${p.id}`}><Trash2 size={16} /></button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TeamTable({ team, onEdit, onDelete, onNew }) {
+  return (
+    <div>
+      <div className="mb-4 flex justify-end">
+        <button onClick={onNew} data-testid="admin-new-member-btn" className="hn-btn-primary inline-flex items-center gap-2 text-sm !py-2"><Plus size={14} /> New Member</button>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="admin-team-list">
+        {team.map((m) => (
+          <div key={m.id} className="hn-card rounded-xl p-5 flex gap-4" data-testid={`admin-team-row-${m.id}`}>
+            {m.image_url ? <img src={m.image_url} alt={m.name} className="w-16 h-16 rounded-lg object-cover flex-shrink-0" /> : <div className="w-16 h-16 rounded-lg bg-[#020617] border border-white/10 grid place-items-center text-slate-600 text-xs flex-shrink-0">no img</div>}
+            <div className="flex-1 min-w-0">
+              <div className="font-display font-semibold text-white truncate">{m.name}</div>
+              <div className="text-xs uppercase tracking-widest font-mono-metric text-[#F26B21] mt-0.5">{m.role}</div>
+              <div className="mt-1 text-xs text-slate-500">Order: {m.display_order} · {m.active ? <span className="text-emerald-400">Active</span> : <span className="text-slate-500">Hidden</span>}</div>
+            </div>
+            <div className="flex flex-col gap-1">
+              <button onClick={() => onEdit(m)} data-testid={`admin-team-edit-${m.id}`} className="p-2 rounded-md hover:bg-white/5 text-slate-300"><Edit3 size={14} /></button>
+              <button onClick={() => onDelete(m.id)} data-testid={`admin-team-delete-${m.id}`} className="p-2 rounded-md hover:bg-red-500/10 text-red-400"><Trash2 size={14} /></button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TestimonialsTable({ items, onEdit, onDelete, onNew }) {
+  return (
+    <div>
+      <div className="mb-4 flex justify-end">
+        <button onClick={onNew} data-testid="admin-new-testimonial-btn" className="hn-btn-primary inline-flex items-center gap-2 text-sm !py-2"><Plus size={14} /> New Testimonial</button>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4" data-testid="admin-testimonials-list">
+        {items.map((t) => (
+          <div key={t.id} className="hn-card rounded-xl p-5 flex gap-4" data-testid={`admin-t-row-${t.id}`}>
+            {t.image_url ? <img src={t.image_url} alt={t.name} className="w-14 h-14 rounded-full object-cover flex-shrink-0" /> : <div className="w-14 h-14 rounded-full bg-[#020617] border border-white/10 grid place-items-center text-slate-600 text-xs flex-shrink-0">no img</div>}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <div className="font-display font-semibold text-white truncate">{t.name}</div>
+                <div className="flex items-center">{Array.from({ length: t.rating }).map((_, i) => <Star key={i} size={11} className="fill-[#F26B21] text-[#F26B21]" />)}</div>
+              </div>
+              <div className="text-xs uppercase tracking-widest font-mono-metric text-[#F26B21] mt-0.5">{t.location}</div>
+              <div className="text-slate-400 text-sm mt-2 line-clamp-2">"{t.quote}"</div>
+              <div className="mt-2 text-xs text-slate-500">Order: {t.display_order} · {t.active ? <span className="text-emerald-400">Active</span> : <span className="text-slate-500">Hidden</span>}</div>
+            </div>
+            <div className="flex flex-col gap-1">
+              <button onClick={() => onEdit(t)} data-testid={`admin-t-edit-${t.id}`} className="p-2 rounded-md hover:bg-white/5 text-slate-300"><Edit3 size={14} /></button>
+              <button onClick={() => onDelete(t.id)} data-testid={`admin-t-delete-${t.id}`} className="p-2 rounded-md hover:bg-red-500/10 text-red-400"><Trash2 size={14} /></button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function PlanForm({ initial, onSave, onClose }) {
   const [form, setForm] = useState(initial ? { ...initial } : { ...EMPTY_PLAN });
@@ -287,13 +828,7 @@ function PlanForm({ initial, onSave, onClose }) {
   };
   const submit = (e) => {
     e.preventDefault();
-    onSave({
-      ...form,
-      speed_mbps: Number(form.speed_mbps),
-      price: Number(form.price),
-      validity_days: Number(form.validity_days),
-      display_order: Number(form.display_order),
-    });
+    onSave({ ...form, speed_mbps: Number(form.speed_mbps), price: Number(form.price), validity_days: Number(form.validity_days), display_order: Number(form.display_order) });
   };
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm grid place-items-center p-4" data-testid="admin-plan-form-modal">
@@ -331,120 +866,13 @@ function PlanForm({ initial, onSave, onClose }) {
   );
 }
 
-const inputCls = "w-full rounded-md bg-[#020617] border border-white/10 focus:border-[#F26B21] outline-none px-3 py-2.5 text-white text-sm";
-const FormField = ({ label, children }) => (
-  <div>
-    <label className="block text-xs uppercase tracking-widest font-mono-metric text-slate-400 mb-2">{label}</label>
-    {children}
-  </div>
-);
-
-function PartnerEnquiriesTable({ items, onRead, onDelete }) {
-  if (items.length === 0) return <div className="text-slate-400 py-12 text-center">No partner enquiries yet.</div>;
-  return (
-    <div className="space-y-3" data-testid="admin-partners-list">
-      {items.map((p) => (
-        <div key={p.id} className={`hn-card rounded-xl p-6 ${!p.read ? "border-[#F26B21]/40" : ""}`} data-testid={`admin-partner-${p.id}`}>
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-3 flex-wrap">
-                <span className="font-display text-lg font-semibold text-white">{p.name}</span>
-                {p.company && <span className="text-slate-400 text-sm">· {p.company}</span>}
-                {!p.read && <span className="font-mono-metric text-[10px] uppercase tracking-widest bg-[#F26B21]/20 text-[#F26B21] px-2 py-0.5 rounded-full">New</span>}
-              </div>
-              <div className="text-slate-400 text-sm mt-1">{p.email} · {p.phone} · {p.city || 'City n/a'}</div>
-              <div className="text-[#F26B21] text-xs uppercase tracking-widest font-mono-metric mt-2">{p.partnership_type}</div>
-              <div className="text-slate-400 text-sm mt-3 whitespace-pre-line leading-relaxed">{p.message}</div>
-            </div>
-            <div className="flex items-center gap-2">
-              {!p.read && <button onClick={() => onRead(p.id)} className="p-2 rounded-md hover:bg-white/5 text-emerald-400" data-testid={`admin-partner-read-${p.id}`}><CheckCircle2 size={16} /></button>}
-              <button onClick={() => onDelete(p.id)} className="p-2 rounded-md hover:bg-red-500/10 text-red-400" data-testid={`admin-partner-delete-${p.id}`}><Trash2 size={16} /></button>
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function TeamTable({ team, onEdit, onDelete, onNew }) {
-  return (
-    <div>
-      <div className="mb-4 flex justify-end">
-        <button onClick={onNew} data-testid="admin-new-member-btn" className="hn-btn-primary inline-flex items-center gap-2 text-sm !py-2">
-          <Plus size={14} /> New Member
-        </button>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="admin-team-list">
-        {team.map((m) => (
-          <div key={m.id} className="hn-card rounded-xl p-5 flex gap-4" data-testid={`admin-team-row-${m.id}`}>
-            {m.image_url ? (
-              <img src={m.image_url} alt={m.name} className="w-16 h-16 rounded-lg object-cover flex-shrink-0" />
-            ) : (
-              <div className="w-16 h-16 rounded-lg bg-[#020617] border border-white/10 grid place-items-center text-slate-600 text-xs flex-shrink-0">no img</div>
-            )}
-            <div className="flex-1 min-w-0">
-              <div className="font-display font-semibold text-white truncate">{m.name}</div>
-              <div className="text-xs uppercase tracking-widest font-mono-metric text-[#F26B21] mt-0.5">{m.role}</div>
-              <div className="mt-1 text-xs text-slate-500">Order: {m.display_order} · {m.active ? <span className="text-emerald-400">Active</span> : <span className="text-slate-500">Hidden</span>}</div>
-            </div>
-            <div className="flex flex-col gap-1">
-              <button onClick={() => onEdit(m)} data-testid={`admin-team-edit-${m.id}`} className="p-2 rounded-md hover:bg-white/5 text-slate-300"><Edit3 size={14} /></button>
-              <button onClick={() => onDelete(m.id)} data-testid={`admin-team-delete-${m.id}`} className="p-2 rounded-md hover:bg-red-500/10 text-red-400"><Trash2 size={14} /></button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function TestimonialsTable({ items, onEdit, onDelete, onNew }) {
-  return (
-    <div>
-      <div className="mb-4 flex justify-end">
-        <button onClick={onNew} data-testid="admin-new-testimonial-btn" className="hn-btn-primary inline-flex items-center gap-2 text-sm !py-2">
-          <Plus size={14} /> New Testimonial
-        </button>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4" data-testid="admin-testimonials-list">
-        {items.map((t) => (
-          <div key={t.id} className="hn-card rounded-xl p-5 flex gap-4" data-testid={`admin-t-row-${t.id}`}>
-            {t.image_url ? (
-              <img src={t.image_url} alt={t.name} className="w-14 h-14 rounded-full object-cover flex-shrink-0" />
-            ) : (
-              <div className="w-14 h-14 rounded-full bg-[#020617] border border-white/10 grid place-items-center text-slate-600 text-xs flex-shrink-0">no img</div>
-            )}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <div className="font-display font-semibold text-white truncate">{t.name}</div>
-                <div className="flex items-center">{Array.from({length: t.rating}).map((_,i) => <Star key={i} size={11} className="fill-[#F26B21] text-[#F26B21]" />)}</div>
-              </div>
-              <div className="text-xs uppercase tracking-widest font-mono-metric text-[#F26B21] mt-0.5">{t.location}</div>
-              <div className="text-slate-400 text-sm mt-2 line-clamp-2">"{t.quote}"</div>
-              <div className="mt-2 text-xs text-slate-500">Order: {t.display_order} · {t.active ? <span className="text-emerald-400">Active</span> : <span className="text-slate-500">Hidden</span>}</div>
-            </div>
-            <div className="flex flex-col gap-1">
-              <button onClick={() => onEdit(t)} data-testid={`admin-t-edit-${t.id}`} className="p-2 rounded-md hover:bg-white/5 text-slate-300"><Edit3 size={14} /></button>
-              <button onClick={() => onDelete(t.id)} data-testid={`admin-t-delete-${t.id}`} className="p-2 rounded-md hover:bg-red-500/10 text-red-400"><Trash2 size={14} /></button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function TestimonialForm({ initial, onSave, onClose }) {
   const [form, setForm] = useState(initial ? { ...initial } : { ...EMPTY_TESTIMONIAL });
   const upd = (k) => (e) => {
     const v = e.target.type === "checkbox" ? e.target.checked : e.target.value;
     setForm((f) => ({ ...f, [k]: v }));
   };
-  const submit = (e) => {
-    e.preventDefault();
-    onSave({ ...form, rating: Number(form.rating), display_order: Number(form.display_order) });
-  };
+  const submit = (e) => { e.preventDefault(); onSave({ ...form, rating: Number(form.rating), display_order: Number(form.display_order) }); };
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm grid place-items-center p-4" data-testid="admin-t-form-modal">
       <div className="w-full max-w-2xl hn-card rounded-2xl p-8 max-h-[90vh] overflow-y-auto">
@@ -478,10 +906,7 @@ function MemberForm({ initial, onSave, onClose }) {
     const v = e.target.type === "checkbox" ? e.target.checked : e.target.value;
     setForm((f) => ({ ...f, [k]: v }));
   };
-  const submit = (e) => {
-    e.preventDefault();
-    onSave({ ...form, display_order: Number(form.display_order) });
-  };
+  const submit = (e) => { e.preventDefault(); onSave({ ...form, display_order: Number(form.display_order) }); };
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm grid place-items-center p-4" data-testid="admin-member-form-modal">
       <div className="w-full max-w-2xl hn-card rounded-2xl p-8 max-h-[90vh] overflow-y-auto">
