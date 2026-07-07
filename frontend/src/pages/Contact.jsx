@@ -36,7 +36,7 @@ export default function Contact() {
         <div className="space-y-4">
           <InfoBlock icon={Mail} label="Email" value="hello@hydranet.in" testId="contact-info-email" />
           <InfoBlock icon={Phone} label="Phone" value="+91 90000 00000" testId="contact-info-phone" />
-          <InfoBlock icon={MapPin} label="Office" value="Fiber Hub, Sector 12, Kolkata — 700094, India" testId="contact-info-address" />
+          <InfoBlock icon={MapPin} label="Office" value="Mohanpur, West Bengal — India" testId="contact-info-address" />
           <div className="hn-card rounded-xl p-6">
             <div className="hn-overline mb-3">Support Hours</div>
             <div className="text-white font-mono-metric">24 × 7 × 365</div>
@@ -83,7 +83,7 @@ export default function Contact() {
             <iframe
               title="Hydranet Broadband Location"
               data-testid="contact-map-iframe"
-              src="https://www.openstreetmap.org/export/embed.html?bbox=88.3200%2C22.5000%2C88.4400%2C22.6000&layer=mapnik&marker=22.5500%2C88.3800"
+              src="https://www.openstreetmap.org/export/embed.html?bbox=87.4065726%2C21.8319805%2C87.4265726%2C21.8519805&layer=mapnik&marker=21.8419805%2C87.4165726"
               className="absolute inset-0 w-full h-full grayscale-[0.4] contrast-125"
               style={{ border: 0, filter: "invert(0.92) hue-rotate(180deg)" }}
               loading="lazy"
@@ -94,10 +94,10 @@ export default function Contact() {
           <div className="p-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/5 bg-[#020617]">
             <div className="text-sm text-slate-300">
               <span className="text-[#F26B21] font-mono-metric text-xs uppercase tracking-widest mr-2">HQ</span>
-              Fiber Hub, Sector 12, Kolkata — 700094, India
+              Mohanpur, West Bengal, India
             </div>
             <a
-              href="https://www.openstreetmap.org/?mlat=22.5500&mlon=88.3800#map=13/22.5500/88.3800"
+              href="https://www.openstreetmap.org/?mlat=21.8419805&mlon=87.4165726#map=16/21.8419805/87.4165726"
               target="_blank"
               rel="noopener noreferrer"
               data-testid="contact-open-map-link"
