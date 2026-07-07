@@ -275,8 +275,34 @@ class PartnerEnquiryCreate(BaseModel):
 # ---------------- Models: Tickets ----------------
 VALID_STATUSES = {"open", "in_progress", "resolved", "closed"}
 VALID_PRIORITIES = {"low", "medium", "high", "urgent"}
-VALID_CATEGORIES = {"technical", "billing", "installation", "general"}
 VALID_ROLES = {"super_admin", "admin", "support"}
+SLA_OPTIONS = {"", "4h", "8h", "24h", "48h", "72h"}
+
+# Ticket Categories (DB-driven)
+class TicketCategory(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    slug: str
+    description: str = ""
+    color: str = "#F26B21"
+    active: bool = True
+    display_order: int = 0
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class TicketCategoryCreate(BaseModel):
+    name: str
+    slug: str = ""
+    description: str = ""
+    color: str = "#F26B21"
+    active: bool = True
+    display_order: int = 0
+
+class TicketCategoryUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    color: Optional[str] = None
+    active: Optional[bool] = None
+    display_order: Optional[int] = None
 
 class TicketNote(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -296,6 +322,10 @@ class Ticket(BaseModel):
     customer_name: str
     customer_email: str = ""
     customer_phone: str = ""
+    customer_id: str = ""
+    area: str = ""
+    service_type: str = ""
+    sla: str = ""
     assigned_to: str = ""
     notes: List[TicketNote] = []
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -310,6 +340,10 @@ class TicketCreate(BaseModel):
     customer_name: str
     customer_email: str = ""
     customer_phone: str = ""
+    customer_id: str = ""
+    area: str = ""
+    service_type: str = ""
+    sla: str = ""
     assigned_to: str = ""
 
 class TicketUpdate(BaseModel):
@@ -318,6 +352,9 @@ class TicketUpdate(BaseModel):
     status: Optional[str] = None
     priority: Optional[str] = None
     category: Optional[str] = None
+    area: Optional[str] = None
+    service_type: Optional[str] = None
+    sla: Optional[str] = None
     assigned_to: Optional[str] = None
 
 class TicketNoteCreate(BaseModel):
@@ -330,6 +367,9 @@ class PublicTicketCreate(BaseModel):
     customer_name: str
     customer_email: str = ""
     customer_phone: str = ""
+    customer_id: str = ""
+    area: str = ""
+    service_type: str = ""
 
 # ---------------- Models: Admin Users ----------------
 class AdminUserCreate(BaseModel):
@@ -456,6 +496,27 @@ async def seed_plans():
         if docs:
             await db.plans.insert_many(docs)
             logger.info(f"Seeded {len(docs)} plans")
+
+DEFAULT_CATEGORIES = [
+    {"name": "Technical",    "slug": "technical",    "description": "Internet connectivity, speed, and hardware issues", "color": "#3B82F6", "display_order": 1},
+    {"name": "Billing",      "slug": "billing",      "description": "Payment, invoice, and plan queries",                "color": "#10B981", "display_order": 2},
+    {"name": "Installation", "slug": "installation", "description": "New connection and equipment setup",                "color": "#F59E0B", "display_order": 3},
+    {"name": "OTT",          "slug": "ott",          "description": "Streaming service and OTT bundle issues",           "color": "#8B5CF6", "display_order": 4},
+    {"name": "Complaint",    "slug": "complaint",    "description": "Service quality complaints and escalations",        "color": "#EF4444", "display_order": 5},
+    {"name": "General",      "slug": "general",      "description": "General enquiries and requests",                   "color": "#6B7280", "display_order": 6},
+]
+
+async def seed_ticket_categories():
+    count = await db.ticket_categories.count_documents({})
+    if count == 0:
+        docs = []
+        for c in DEFAULT_CATEGORIES:
+            cat = TicketCategory(**c)
+            d = cat.model_dump()
+            d["created_at"] = d["created_at"].isoformat()
+            docs.append(d)
+        await db.ticket_categories.insert_many(docs)
+        logger.info(f"Seeded {len(docs)} ticket categories")
 
 # ---------------- Routes: Public ----------------
 @api_router.get("/")
@@ -872,11 +933,53 @@ def _parse_ticket_doc(d: dict) -> dict:
             except: note["created_at"] = datetime.now(timezone.utc)
     return d
 
+# ---------------- Routes: Ticket Categories ----------------
+@api_router.get("/ticket-categories")
+async def public_list_categories():
+    docs = await db.ticket_categories.find({"active": True}, {"_id": 0}).sort("display_order", 1).to_list(100)
+    return docs
+
+@api_router.get("/admin/ticket-categories")
+async def admin_list_categories(current: dict = Depends(get_current_admin)):
+    docs = await db.ticket_categories.find({}, {"_id": 0}).sort("display_order", 1).to_list(100)
+    return docs
+
+@api_router.post("/admin/ticket-categories")
+async def admin_create_category(payload: TicketCategoryCreate, current: dict = Depends(get_current_admin)):
+    _require_write_role(current)
+    slug = payload.slug.strip() or payload.name.lower().replace(" ", "_").replace("-", "_")
+    existing = await db.ticket_categories.find_one({"slug": slug})
+    if existing:
+        raise HTTPException(status_code=400, detail="A category with this slug already exists")
+    cat = TicketCategory(name=payload.name, slug=slug, description=payload.description,
+                         color=payload.color, active=payload.active, display_order=payload.display_order)
+    doc = cat.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    await db.ticket_categories.insert_one(doc)
+    return doc
+
+@api_router.patch("/admin/ticket-categories/{cat_id}")
+async def admin_update_category(cat_id: str, payload: TicketCategoryUpdate, current: dict = Depends(get_current_admin)):
+    _require_write_role(current)
+    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    result = await db.ticket_categories.update_one({"id": cat_id}, {"$set": updates})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Category not found")
+    return await db.ticket_categories.find_one({"id": cat_id}, {"_id": 0})
+
+@api_router.delete("/admin/ticket-categories/{cat_id}")
+async def admin_delete_category(cat_id: str, current: dict = Depends(get_current_admin)):
+    _require_write_role(current)
+    result = await db.ticket_categories.delete_one({"id": cat_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Category not found")
+    return {"message": "Deleted"}
+
 # ---------------- Routes: Public Tickets ----------------
 @api_router.post("/tickets", response_model=Ticket)
 async def public_create_ticket(payload: PublicTicketCreate):
-    if payload.category not in VALID_CATEGORIES:
-        raise HTTPException(status_code=400, detail="Invalid category")
     ticket_number = await next_ticket_number()
     ticket = Ticket(ticket_number=ticket_number, **payload.model_dump())
     doc = ticket.model_dump()
@@ -906,8 +1009,6 @@ async def admin_create_ticket(payload: TicketCreate, current: dict = Depends(get
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     if payload.priority not in VALID_PRIORITIES:
         raise HTTPException(status_code=400, detail="Invalid priority")
-    if payload.category not in VALID_CATEGORIES:
-        raise HTTPException(status_code=400, detail="Invalid category")
     ticket_number = await next_ticket_number()
     ticket = Ticket(ticket_number=ticket_number, **payload.model_dump())
     doc = ticket.model_dump()
@@ -1048,10 +1149,13 @@ async def on_startup():
     await db.tickets.create_index("id", unique=True)
     await db.tickets.create_index("status")
     await db.tickets.create_index("ticket_number")
+    await db.ticket_categories.create_index("id", unique=True)
+    await db.ticket_categories.create_index("slug", unique=True)
     await seed_admin()
     await seed_plans()
     await seed_team()
     await seed_testimonials()
+    await seed_ticket_categories()
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

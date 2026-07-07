@@ -12,6 +12,7 @@ import About from "@/pages/About";
 import Team from "@/pages/Team";
 import Contact from "@/pages/Contact";
 import Partner from "@/pages/Partner";
+import RaiseTicket from "@/pages/RaiseTicket";
 import AdminLogin from "@/pages/AdminLogin";
 import AdminDashboard from "@/pages/AdminDashboard";
 import ForgotPassword from "@/pages/ForgotPassword";
@@ -46,6 +47,7 @@ function App() {
               <Route path="/team" element={<Team />} />
               <Route path="/contact" element={<Contact />} />
               <Route path="/partner" element={<Partner />} />
+              <Route path="/support" element={<RaiseTicket />} />
             </Route>
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/admin/forgot-password" element={<ForgotPassword />} />
