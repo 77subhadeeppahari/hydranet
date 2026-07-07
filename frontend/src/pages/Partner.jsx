@@ -58,9 +58,10 @@ export default function Partner() {
       {/* Form */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="space-y-4">
-          <div className="hn-card rounded-xl p-6">
-            <div className="w-11 h-11 rounded-md grid place-items-center bg-[#F26B21]/10 text-[#F26B21] border border-[#F26B21]/20 mb-4">
-              <Handshake size={20} strokeWidth={1.5} />
+          <div className="hn-card rounded-xl p-6 relative overflow-hidden">
+            <div className="absolute -top-8 -right-8 w-40 h-40 rounded-full bg-[#F26B21]/20 blur-3xl pointer-events-none" />
+            <div className="relative w-20 h-20 rounded-2xl grid place-items-center bg-gradient-to-br from-[#F26B21]/30 to-[#0F2650]/60 text-[#F26B21] border border-[#F26B21]/40 mb-5 shadow-[0_0_40px_-10px_rgba(242,107,33,0.6)]">
+              <Handshake size={40} strokeWidth={1.4} />
             </div>
             <div className="hn-overline mb-2">Why partner with us</div>
             <ul className="text-sm text-slate-300 space-y-2 mt-3">
