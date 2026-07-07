@@ -3,7 +3,7 @@ import { Link, Navigate } from "react-router-dom";
 import { api, formatApiErrorDetail } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { Logo } from "../components/Logo";
-import { LogOut, Plus, Edit3, Trash2, Mail, X, CheckCircle2, Package, Users } from "lucide-react";
+import { LogOut, Plus, Edit3, Trash2, Mail, X, CheckCircle2, Package, Users, Star } from "lucide-react";
 import { toast } from "sonner";
 
 const CATEGORIES = ["monthly", "six_month", "twelve_month", "welcome", "ott"];
@@ -15,6 +15,10 @@ const EMPTY_PLAN = {
 const EMPTY_MEMBER = {
   name: "", role: "", image_url: "", bio: "",
   linkedin: "", twitter: "", email: "",
+  display_order: 0, active: true,
+};
+const EMPTY_TESTIMONIAL = {
+  name: "", location: "", rating: 5, quote: "", image_url: "",
   display_order: 0, active: true,
 };
 
@@ -29,6 +33,9 @@ export default function AdminDashboard() {
   const [showForm, setShowForm] = useState(false);
   const [editingMember, setEditingMember] = useState(null);
   const [showMemberForm, setShowMemberForm] = useState(false);
+  const [testimonials, setTestimonials] = useState([]);
+  const [editingT, setEditingT] = useState(null);
+  const [showTForm, setShowTForm] = useState(false);
 
   useEffect(() => {
     if (!admin) return;
@@ -39,12 +46,13 @@ export default function AdminDashboard() {
   const reload = async () => {
     setLoading(true);
     try {
-      const [plansRes, contactsRes, teamRes] = await Promise.all([
+      const [plansRes, contactsRes, teamRes, tRes] = await Promise.all([
         api.get("/admin/plans"),
         api.get("/admin/contacts"),
         api.get("/admin/team"),
+        api.get("/admin/testimonials"),
       ]);
-      setPlans(plansRes.data); setContacts(contactsRes.data); setTeam(teamRes.data);
+      setPlans(plansRes.data); setContacts(contactsRes.data); setTeam(teamRes.data); setTestimonials(tRes.data);
     } catch (err) { toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Failed to load"); }
     finally { setLoading(false); }
   };
@@ -101,6 +109,19 @@ export default function AdminDashboard() {
     catch (err) { toast.error("Failed"); }
   };
 
+  const saveTestimonial = async (data) => {
+    try {
+      if (editingT?.id) { await api.patch(`/admin/testimonials/${editingT.id}`, data); toast.success("Testimonial updated"); }
+      else { await api.post("/admin/testimonials", data); toast.success("Testimonial added"); }
+      setShowTForm(false); setEditingT(null); reload();
+    } catch (err) { toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Save failed"); }
+  };
+  const deleteTestimonial = async (id) => {
+    if (!window.confirm("Delete this testimonial?")) return;
+    try { await api.delete(`/admin/testimonials/${id}`); reload(); toast.success("Deleted"); }
+    catch (err) { toast.error("Failed"); }
+  };
+
   const unreadCount = contacts.filter((c) => !c.read).length;
 
   return (
@@ -134,6 +155,9 @@ export default function AdminDashboard() {
             <TabBtn active={tab === "team"} onClick={() => setTab("team")} testId="admin-tab-team">
               <Users size={14} /> Team <span className="font-mono-metric text-xs text-slate-500">({team.length})</span>
             </TabBtn>
+            <TabBtn active={tab === "testimonials"} onClick={() => setTab("testimonials")} testId="admin-tab-testimonials">
+              <Star size={14} /> Reviews <span className="font-mono-metric text-xs text-slate-500">({testimonials.length})</span>
+            </TabBtn>
             <TabBtn active={tab === "contacts"} onClick={() => setTab("contacts")} testId="admin-tab-contacts">
               <Mail size={14} /> Enquiries {unreadCount > 0 && <span className="ml-1 font-mono-metric text-xs bg-[#F26B21] text-white px-1.5 rounded-full">{unreadCount}</span>}
             </TabBtn>
@@ -145,6 +169,8 @@ export default function AdminDashboard() {
             <PlansTable plans={plans} onEdit={(p) => { setEditing(p); setShowForm(true); }} onDelete={deletePlan} onNew={() => { setEditing(null); setShowForm(true); }} />
           ) : tab === "team" ? (
             <TeamTable team={team} onEdit={(m) => { setEditingMember(m); setShowMemberForm(true); }} onDelete={deleteMember} onNew={() => { setEditingMember(null); setShowMemberForm(true); }} />
+          ) : tab === "testimonials" ? (
+            <TestimonialsTable items={testimonials} onEdit={(t) => { setEditingT(t); setShowTForm(true); }} onDelete={deleteTestimonial} onNew={() => { setEditingT(null); setShowTForm(true); }} />
           ) : (
             <ContactsTable contacts={contacts} onRead={markRead} onDelete={deleteContact} />
           )
@@ -153,6 +179,7 @@ export default function AdminDashboard() {
 
       {showForm && <PlanForm initial={editing} onSave={savePlan} onClose={() => { setShowForm(false); setEditing(null); }} />}
       {showMemberForm && <MemberForm initial={editingMember} onSave={saveMember} onClose={() => { setShowMemberForm(false); setEditingMember(null); }} />}
+      {showTForm && <TestimonialForm initial={editingT} onSave={saveTestimonial} onClose={() => { setShowTForm(false); setEditingT(null); }} />}
     </div>
   );
 }
@@ -328,6 +355,79 @@ function TeamTable({ team, onEdit, onDelete, onNew }) {
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function TestimonialsTable({ items, onEdit, onDelete, onNew }) {
+  return (
+    <div>
+      <div className="mb-4 flex justify-end">
+        <button onClick={onNew} data-testid="admin-new-testimonial-btn" className="hn-btn-primary inline-flex items-center gap-2 text-sm !py-2">
+          <Plus size={14} /> New Testimonial
+        </button>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4" data-testid="admin-testimonials-list">
+        {items.map((t) => (
+          <div key={t.id} className="hn-card rounded-xl p-5 flex gap-4" data-testid={`admin-t-row-${t.id}`}>
+            {t.image_url ? (
+              <img src={t.image_url} alt={t.name} className="w-14 h-14 rounded-full object-cover flex-shrink-0" />
+            ) : (
+              <div className="w-14 h-14 rounded-full bg-[#020617] border border-white/10 grid place-items-center text-slate-600 text-xs flex-shrink-0">no img</div>
+            )}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <div className="font-display font-semibold text-white truncate">{t.name}</div>
+                <div className="flex items-center">{Array.from({length: t.rating}).map((_,i) => <Star key={i} size={11} className="fill-[#F26B21] text-[#F26B21]" />)}</div>
+              </div>
+              <div className="text-xs uppercase tracking-widest font-mono-metric text-[#F26B21] mt-0.5">{t.location}</div>
+              <div className="text-slate-400 text-sm mt-2 line-clamp-2">"{t.quote}"</div>
+              <div className="mt-2 text-xs text-slate-500">Order: {t.display_order} · {t.active ? <span className="text-emerald-400">Active</span> : <span className="text-slate-500">Hidden</span>}</div>
+            </div>
+            <div className="flex flex-col gap-1">
+              <button onClick={() => onEdit(t)} data-testid={`admin-t-edit-${t.id}`} className="p-2 rounded-md hover:bg-white/5 text-slate-300"><Edit3 size={14} /></button>
+              <button onClick={() => onDelete(t.id)} data-testid={`admin-t-delete-${t.id}`} className="p-2 rounded-md hover:bg-red-500/10 text-red-400"><Trash2 size={14} /></button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TestimonialForm({ initial, onSave, onClose }) {
+  const [form, setForm] = useState(initial ? { ...initial } : { ...EMPTY_TESTIMONIAL });
+  const upd = (k) => (e) => {
+    const v = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    setForm((f) => ({ ...f, [k]: v }));
+  };
+  const submit = (e) => {
+    e.preventDefault();
+    onSave({ ...form, rating: Number(form.rating), display_order: Number(form.display_order) });
+  };
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm grid place-items-center p-4" data-testid="admin-t-form-modal">
+      <div className="w-full max-w-2xl hn-card rounded-2xl p-8 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="font-display text-2xl font-bold text-white">{initial ? "Edit Testimonial" : "New Testimonial"}</h2>
+          <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-md text-slate-400" data-testid="admin-t-form-close"><X size={18} /></button>
+        </div>
+        <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormField label="Customer Name"><input required value={form.name} onChange={upd("name")} data-testid="admin-t-name" className={inputCls} /></FormField>
+          <FormField label="Location"><input value={form.location} onChange={upd("location")} data-testid="admin-t-location" className={inputCls} placeholder="e.g., Mohanpur" /></FormField>
+          <div className="md:col-span-2"><FormField label="Photo URL"><input value={form.image_url} onChange={upd("image_url")} data-testid="admin-t-image" className={inputCls} placeholder="https://..." /></FormField></div>
+          <div className="md:col-span-2"><FormField label="Quote"><textarea required rows={4} value={form.quote} onChange={upd("quote")} data-testid="admin-t-quote" className={inputCls} /></FormField></div>
+          <FormField label="Rating (1-5)"><input type="number" min="1" max="5" value={form.rating} onChange={upd("rating")} data-testid="admin-t-rating" className={inputCls} /></FormField>
+          <FormField label="Display Order"><input type="number" value={form.display_order} onChange={upd("display_order")} data-testid="admin-t-order" className={inputCls} /></FormField>
+          <div className="md:col-span-2 flex items-center gap-6">
+            <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={form.active} onChange={upd("active")} data-testid="admin-t-active" /> Active (visible on Home)</label>
+          </div>
+          <div className="md:col-span-2 flex justify-end gap-3 mt-2">
+            <button type="button" onClick={onClose} className="hn-btn-secondary text-sm !py-2">Cancel</button>
+            <button type="submit" data-testid="admin-t-save" className="hn-btn-primary text-sm !py-2">Save Testimonial</button>
+          </div>
+        </form>
       </div>
     </div>
   );

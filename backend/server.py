@@ -220,6 +220,36 @@ class TeamMemberUpdate(BaseModel):
     display_order: Optional[int] = None
     active: Optional[bool] = None
 
+class Testimonial(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    location: str = ""
+    rating: int = 5
+    quote: str
+    image_url: str = ""
+    display_order: int = 0
+    active: bool = True
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class TestimonialCreate(BaseModel):
+    name: str
+    location: str = ""
+    rating: int = 5
+    quote: str
+    image_url: str = ""
+    display_order: int = 0
+    active: bool = True
+
+class TestimonialUpdate(BaseModel):
+    name: Optional[str] = None
+    location: Optional[str] = None
+    rating: Optional[int] = None
+    quote: Optional[str] = None
+    image_url: Optional[str] = None
+    display_order: Optional[int] = None
+    active: Optional[bool] = None
+
 # ---------------- Seed data ----------------
 SEED_PLANS = [
     # Monthly
@@ -299,6 +329,25 @@ async def seed_team():
             await db.team_members.insert_many(docs)
             logger.info(f"Seeded {len(docs)} team members")
 
+SEED_TESTIMONIALS = [
+    {"name": "Anirban Ghosh", "location": "Mohanpur", "rating": 5, "quote": "Switched from a big-name ISP last year — never buffers, and the installation guys were on time to the minute. Speed is exactly what I pay for.", "image_url": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=60", "display_order": 1},
+    {"name": "Sudipta Banerjee", "location": "West Midnapore", "rating": 5, "quote": "The OTT bundle alone pays for the plan. Support picks up in 2 rings and actually knows what they're doing. Highly recommend.", "image_url": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&auto=format&fit=crop&q=60", "display_order": 2},
+    {"name": "Rajesh Kumar", "location": "Bagda", "rating": 5, "quote": "Been with Hydranet 2 years. Zero downtime, honest billing, and when there was a cable cut in the area they fixed it before I noticed.", "image_url": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop&q=60", "display_order": 3},
+]
+
+async def seed_testimonials():
+    count = await db.testimonials.count_documents({})
+    if count == 0:
+        docs = []
+        for t in SEED_TESTIMONIALS:
+            item = Testimonial(**t)
+            d = item.model_dump()
+            d["created_at"] = d["created_at"].isoformat()
+            docs.append(d)
+        if docs:
+            await db.testimonials.insert_many(docs)
+            logger.info(f"Seeded {len(docs)} testimonials")
+
 async def seed_plans():
     count = await db.plans.count_documents({})
     if count == 0:
@@ -337,6 +386,18 @@ async def list_plans(category: Optional[str] = None, active_only: bool = True):
 async def list_team(active_only: bool = True):
     query = {"active": True} if active_only else {}
     docs = await db.team_members.find(query, {"_id": 0}).sort([("display_order", 1)]).to_list(200)
+    for d in docs:
+        if isinstance(d.get("created_at"), str):
+            try:
+                d["created_at"] = datetime.fromisoformat(d["created_at"])
+            except ValueError:
+                d["created_at"] = datetime.now(timezone.utc)
+    return docs
+
+@api_router.get("/testimonials", response_model=List[Testimonial])
+async def list_testimonials(active_only: bool = True):
+    query = {"active": True} if active_only else {}
+    docs = await db.testimonials.find(query, {"_id": 0}).sort([("display_order", 1)]).to_list(200)
     for d in docs:
         if isinstance(d.get("created_at"), str):
             try:
@@ -578,6 +639,49 @@ async def admin_delete_team(member_id: str, current: dict = Depends(get_current_
         raise HTTPException(status_code=404, detail="Team member not found")
     return {"message": "Deleted"}
 
+# ---------------- Routes: Admin Testimonials ----------------
+@api_router.get("/admin/testimonials", response_model=List[Testimonial])
+async def admin_list_testimonials(current: dict = Depends(get_current_admin)):
+    docs = await db.testimonials.find({}, {"_id": 0}).sort([("display_order", 1)]).to_list(200)
+    for d in docs:
+        if isinstance(d.get("created_at"), str):
+            try:
+                d["created_at"] = datetime.fromisoformat(d["created_at"])
+            except ValueError:
+                d["created_at"] = datetime.now(timezone.utc)
+    return docs
+
+@api_router.post("/admin/testimonials", response_model=Testimonial)
+async def admin_create_testimonial(payload: TestimonialCreate, current: dict = Depends(get_current_admin)):
+    item = Testimonial(**payload.model_dump())
+    doc = item.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    await db.testimonials.insert_one(doc)
+    return item
+
+@api_router.patch("/admin/testimonials/{t_id}", response_model=Testimonial)
+async def admin_update_testimonial(t_id: str, payload: TestimonialUpdate, current: dict = Depends(get_current_admin)):
+    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    result = await db.testimonials.update_one({"id": t_id}, {"$set": updates})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Testimonial not found")
+    doc = await db.testimonials.find_one({"id": t_id}, {"_id": 0})
+    if isinstance(doc.get("created_at"), str):
+        try:
+            doc["created_at"] = datetime.fromisoformat(doc["created_at"])
+        except ValueError:
+            doc["created_at"] = datetime.now(timezone.utc)
+    return doc
+
+@api_router.delete("/admin/testimonials/{t_id}")
+async def admin_delete_testimonial(t_id: str, current: dict = Depends(get_current_admin)):
+    result = await db.testimonials.delete_one({"id": t_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Testimonial not found")
+    return {"message": "Deleted"}
+
 # ---------------- App wiring ----------------
 app.include_router(api_router)
 
@@ -597,9 +701,11 @@ async def on_startup():
     await db.plans.create_index("id", unique=True)
     await db.contacts.create_index("id", unique=True)
     await db.team_members.create_index("id", unique=True)
+    await db.testimonials.create_index("id", unique=True)
     await seed_admin()
     await seed_plans()
     await seed_team()
+    await seed_testimonials()
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

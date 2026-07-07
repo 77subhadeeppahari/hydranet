@@ -34,16 +34,12 @@ const OTT_LOGOS = [
   { label: "Saavan", color: "#2BC5B4" },
 ];
 
-const REVIEWS = [
-  { name: "Anirban Ghosh", role: "Mohanpur", rating: 5, text: "Switched from a big-name ISP last year — never buffers, and the installation guys were on time to the minute. Speed is exactly what I pay for." },
-  { name: "Sudipta Banerjee", role: "West Midnapore", rating: 5, text: "The OTT bundle alone pays for the plan. Support picks up in 2 rings and actually knows what they're doing. Highly recommend." },
-  { name: "Rajesh Kumar", role: "Bagda", rating: 5, text: "Been with Hydranet 2 years. Zero downtime, honest billing, and when there was a cable cut in the area they fixed it before I noticed." },
-];
-
 export default function Home() {
   const [featuredPlans, setFeaturedPlans] = useState([]);
+  const [reviews, setReviews] = useState([]);
   useEffect(() => {
     api.get("/plans", { params: { category: "monthly" } }).then(({ data }) => setFeaturedPlans(data.slice(0, 4)));
+    api.get("/testimonials").then(({ data }) => setReviews(data));
   }, []);
 
   return (
@@ -160,16 +156,19 @@ export default function Home() {
           <h2 className="font-display text-4xl font-bold text-white">What our <span className="text-[#F26B21]">customers say.</span></h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {REVIEWS.map((r, i) => (
-            <div key={i} className="hn-card rounded-xl p-8 relative" data-testid={`home-review-${i}`}>
+          {reviews.map((r, i) => (
+            <div key={r.id} className="hn-card rounded-xl p-8 relative" data-testid={`home-review-${i}`}>
               <Quote size={28} className="text-[#F26B21]/30 absolute top-6 right-6" />
               <div className="flex items-center gap-1 mb-4">
                 {Array.from({ length: r.rating }).map((_, j) => <Star key={j} size={14} className="fill-[#F26B21] text-[#F26B21]" />)}
               </div>
-              <p className="text-slate-300 text-sm leading-relaxed">"{r.text}"</p>
-              <div className="mt-6 pt-6 border-t border-white/5">
-                <div className="font-display font-semibold text-white">{r.name}</div>
-                <div className="text-xs uppercase tracking-widest font-mono-metric text-[#F26B21] mt-1">{r.role}</div>
+              <p className="text-slate-300 text-sm leading-relaxed">"{r.quote}"</p>
+              <div className="mt-6 pt-6 border-t border-white/5 flex items-center gap-3">
+                {r.image_url && <img src={r.image_url} alt={r.name} className="w-11 h-11 rounded-full object-cover border border-white/10" />}
+                <div>
+                  <div className="font-display font-semibold text-white">{r.name}</div>
+                  {r.location && <div className="text-xs uppercase tracking-widest font-mono-metric text-[#F26B21] mt-0.5">{r.location}</div>}
+                </div>
               </div>
             </div>
           ))}
