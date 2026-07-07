@@ -250,6 +250,28 @@ class TestimonialUpdate(BaseModel):
     display_order: Optional[int] = None
     active: Optional[bool] = None
 
+class PartnerEnquiry(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    company: str = ""
+    email: EmailStr
+    phone: str
+    city: str = ""
+    partnership_type: str = ""
+    message: str
+    read: bool = False
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class PartnerEnquiryCreate(BaseModel):
+    name: str
+    company: str = ""
+    email: EmailStr
+    phone: str
+    city: str = ""
+    partnership_type: str = ""
+    message: str
+
 # ---------------- Seed data ----------------
 SEED_PLANS = [
     # Monthly
@@ -682,6 +704,57 @@ async def admin_delete_testimonial(t_id: str, current: dict = Depends(get_curren
         raise HTTPException(status_code=404, detail="Testimonial not found")
     return {"message": "Deleted"}
 
+# ---------------- Routes: Partner Enquiries ----------------
+@api_router.post("/partner-enquiry", response_model=PartnerEnquiry)
+async def create_partner_enquiry(payload: PartnerEnquiryCreate):
+    enq = PartnerEnquiry(**payload.model_dump())
+    doc = enq.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    await db.partner_enquiries.insert_one(doc)
+    if CONTACT_NOTIFICATION_EMAIL:
+        html = _wrap_email_html(
+            "New Partner Enquiry",
+            f"""
+            <p>You have a new <strong>partner</strong> enquiry.</p>
+            <table cellpadding="0" cellspacing="0" style="width:100%; margin-top:16px;">
+              <tr><td style="padding:6px 0; color:#94A3B8; width:140px;">Name</td><td style="color:#F8FAFC;">{enq.name}</td></tr>
+              <tr><td style="padding:6px 0; color:#94A3B8;">Company</td><td style="color:#F8FAFC;">{enq.company or '—'}</td></tr>
+              <tr><td style="padding:6px 0; color:#94A3B8;">Email</td><td style="color:#F8FAFC;">{enq.email}</td></tr>
+              <tr><td style="padding:6px 0; color:#94A3B8;">Phone</td><td style="color:#F8FAFC;">{enq.phone}</td></tr>
+              <tr><td style="padding:6px 0; color:#94A3B8;">City</td><td style="color:#F8FAFC;">{enq.city or '—'}</td></tr>
+              <tr><td style="padding:6px 0; color:#94A3B8;">Type</td><td style="color:#F8FAFC;">{enq.partnership_type or '—'}</td></tr>
+            </table>
+            <div style="margin-top:20px; padding:16px; background:#020617; border-left:3px solid #F26B21; color:#F8FAFC; white-space:pre-wrap;">{enq.message}</div>
+            """,
+        )
+        asyncio.create_task(send_email(CONTACT_NOTIFICATION_EMAIL, f"Partner Enquiry from {enq.name}", html))
+    return enq
+
+@api_router.get("/admin/partner-enquiries", response_model=List[PartnerEnquiry])
+async def admin_list_partner_enquiries(current: dict = Depends(get_current_admin)):
+    docs = await db.partner_enquiries.find({}, {"_id": 0}).sort([("created_at", -1)]).to_list(1000)
+    for d in docs:
+        if isinstance(d.get("created_at"), str):
+            try:
+                d["created_at"] = datetime.fromisoformat(d["created_at"])
+            except ValueError:
+                d["created_at"] = datetime.now(timezone.utc)
+    return docs
+
+@api_router.patch("/admin/partner-enquiries/{p_id}/read")
+async def admin_mark_partner_read(p_id: str, current: dict = Depends(get_current_admin)):
+    result = await db.partner_enquiries.update_one({"id": p_id}, {"$set": {"read": True}})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"message": "Marked as read"}
+
+@api_router.delete("/admin/partner-enquiries/{p_id}")
+async def admin_delete_partner_enquiry(p_id: str, current: dict = Depends(get_current_admin)):
+    result = await db.partner_enquiries.delete_one({"id": p_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"message": "Deleted"}
+
 # ---------------- App wiring ----------------
 app.include_router(api_router)
 
@@ -702,6 +775,7 @@ async def on_startup():
     await db.contacts.create_index("id", unique=True)
     await db.team_members.create_index("id", unique=True)
     await db.testimonials.create_index("id", unique=True)
+    await db.partner_enquiries.create_index("id", unique=True)
     await seed_admin()
     await seed_plans()
     await seed_team()

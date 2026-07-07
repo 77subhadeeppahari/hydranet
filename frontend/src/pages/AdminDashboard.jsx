@@ -3,8 +3,9 @@ import { Link, Navigate } from "react-router-dom";
 import { api, formatApiErrorDetail } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { Logo } from "../components/Logo";
-import { LogOut, Plus, Edit3, Trash2, Mail, X, CheckCircle2, Package, Users, Star } from "lucide-react";
+import { LogOut, Plus, Edit3, Trash2, Mail, X, CheckCircle2, Package, Users, Star, Handshake } from "lucide-react";
 import { toast } from "sonner";
+import { ImageUploadField } from "../components/ImageUploadField";
 
 const CATEGORIES = ["monthly", "six_month", "twelve_month", "welcome", "ott"];
 const EMPTY_PLAN = {
@@ -36,6 +37,7 @@ export default function AdminDashboard() {
   const [testimonials, setTestimonials] = useState([]);
   const [editingT, setEditingT] = useState(null);
   const [showTForm, setShowTForm] = useState(false);
+  const [partnerEnquiries, setPartnerEnquiries] = useState([]);
 
   useEffect(() => {
     if (!admin) return;
@@ -46,16 +48,20 @@ export default function AdminDashboard() {
   const reload = async () => {
     setLoading(true);
     try {
-      const [plansRes, contactsRes, teamRes, tRes] = await Promise.all([
+      const [plansRes, contactsRes, teamRes, tRes, pRes] = await Promise.all([
         api.get("/admin/plans"),
         api.get("/admin/contacts"),
         api.get("/admin/team"),
         api.get("/admin/testimonials"),
+        api.get("/admin/partner-enquiries"),
       ]);
-      setPlans(plansRes.data); setContacts(contactsRes.data); setTeam(teamRes.data); setTestimonials(tRes.data);
+      setPlans(plansRes.data); setContacts(contactsRes.data); setTeam(teamRes.data); setTestimonials(tRes.data); setPartnerEnquiries(pRes.data);
     } catch (err) { toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Failed to load"); }
     finally { setLoading(false); }
   };
+
+  const markPartnerRead = async (id) => { try { await api.patch(`/admin/partner-enquiries/${id}/read`); reload(); } catch { toast.error("Failed"); } };
+  const deletePartner = async (id) => { if (!window.confirm("Delete this enquiry?")) return; try { await api.delete(`/admin/partner-enquiries/${id}`); reload(); toast.success("Deleted"); } catch { toast.error("Failed"); } };
 
   if (authLoading) return <div className="min-h-screen grid place-items-center text-slate-400">Loading…</div>;
   if (!admin) return <Navigate to="/admin/login" replace />;
@@ -158,6 +164,9 @@ export default function AdminDashboard() {
             <TabBtn active={tab === "testimonials"} onClick={() => setTab("testimonials")} testId="admin-tab-testimonials">
               <Star size={14} /> Reviews <span className="font-mono-metric text-xs text-slate-500">({testimonials.length})</span>
             </TabBtn>
+            <TabBtn active={tab === "partners"} onClick={() => setTab("partners")} testId="admin-tab-partners">
+              <Handshake size={14} /> Partners {partnerEnquiries.filter(p => !p.read).length > 0 && <span className="ml-1 font-mono-metric text-xs bg-[#F26B21] text-white px-1.5 rounded-full">{partnerEnquiries.filter(p => !p.read).length}</span>}
+            </TabBtn>
             <TabBtn active={tab === "contacts"} onClick={() => setTab("contacts")} testId="admin-tab-contacts">
               <Mail size={14} /> Enquiries {unreadCount > 0 && <span className="ml-1 font-mono-metric text-xs bg-[#F26B21] text-white px-1.5 rounded-full">{unreadCount}</span>}
             </TabBtn>
@@ -171,6 +180,8 @@ export default function AdminDashboard() {
             <TeamTable team={team} onEdit={(m) => { setEditingMember(m); setShowMemberForm(true); }} onDelete={deleteMember} onNew={() => { setEditingMember(null); setShowMemberForm(true); }} />
           ) : tab === "testimonials" ? (
             <TestimonialsTable items={testimonials} onEdit={(t) => { setEditingT(t); setShowTForm(true); }} onDelete={deleteTestimonial} onNew={() => { setEditingT(null); setShowTForm(true); }} />
+          ) : tab === "partners" ? (
+            <PartnerEnquiriesTable items={partnerEnquiries} onRead={markPartnerRead} onDelete={deletePartner} />
           ) : (
             <ContactsTable contacts={contacts} onRead={markRead} onDelete={deleteContact} />
           )
@@ -328,6 +339,34 @@ const FormField = ({ label, children }) => (
   </div>
 );
 
+function PartnerEnquiriesTable({ items, onRead, onDelete }) {
+  if (items.length === 0) return <div className="text-slate-400 py-12 text-center">No partner enquiries yet.</div>;
+  return (
+    <div className="space-y-3" data-testid="admin-partners-list">
+      {items.map((p) => (
+        <div key={p.id} className={`hn-card rounded-xl p-6 ${!p.read ? "border-[#F26B21]/40" : ""}`} data-testid={`admin-partner-${p.id}`}>
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="font-display text-lg font-semibold text-white">{p.name}</span>
+                {p.company && <span className="text-slate-400 text-sm">· {p.company}</span>}
+                {!p.read && <span className="font-mono-metric text-[10px] uppercase tracking-widest bg-[#F26B21]/20 text-[#F26B21] px-2 py-0.5 rounded-full">New</span>}
+              </div>
+              <div className="text-slate-400 text-sm mt-1">{p.email} · {p.phone} · {p.city || 'City n/a'}</div>
+              <div className="text-[#F26B21] text-xs uppercase tracking-widest font-mono-metric mt-2">{p.partnership_type}</div>
+              <div className="text-slate-400 text-sm mt-3 whitespace-pre-line leading-relaxed">{p.message}</div>
+            </div>
+            <div className="flex items-center gap-2">
+              {!p.read && <button onClick={() => onRead(p.id)} className="p-2 rounded-md hover:bg-white/5 text-emerald-400" data-testid={`admin-partner-read-${p.id}`}><CheckCircle2 size={16} /></button>}
+              <button onClick={() => onDelete(p.id)} className="p-2 rounded-md hover:bg-red-500/10 text-red-400" data-testid={`admin-partner-delete-${p.id}`}><Trash2 size={16} /></button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function TeamTable({ team, onEdit, onDelete, onNew }) {
   return (
     <div>
@@ -416,7 +455,7 @@ function TestimonialForm({ initial, onSave, onClose }) {
         <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormField label="Customer Name"><input required value={form.name} onChange={upd("name")} data-testid="admin-t-name" className={inputCls} /></FormField>
           <FormField label="Location"><input value={form.location} onChange={upd("location")} data-testid="admin-t-location" className={inputCls} placeholder="e.g., Mohanpur" /></FormField>
-          <div className="md:col-span-2"><FormField label="Photo URL"><input value={form.image_url} onChange={upd("image_url")} data-testid="admin-t-image" className={inputCls} placeholder="https://..." /></FormField></div>
+          <div className="md:col-span-2"><FormField label="Photo (URL or Upload)"><ImageUploadField value={form.image_url} onChange={(v) => setForm((f) => ({ ...f, image_url: v }))} testId="admin-t-image" /></FormField></div>
           <div className="md:col-span-2"><FormField label="Quote"><textarea required rows={4} value={form.quote} onChange={upd("quote")} data-testid="admin-t-quote" className={inputCls} /></FormField></div>
           <FormField label="Rating (1-5)"><input type="number" min="1" max="5" value={form.rating} onChange={upd("rating")} data-testid="admin-t-rating" className={inputCls} /></FormField>
           <FormField label="Display Order"><input type="number" value={form.display_order} onChange={upd("display_order")} data-testid="admin-t-order" className={inputCls} /></FormField>
@@ -453,7 +492,7 @@ function MemberForm({ initial, onSave, onClose }) {
         <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormField label="Name"><input required value={form.name} onChange={upd("name")} data-testid="admin-member-name" className={inputCls} /></FormField>
           <FormField label="Role"><input required value={form.role} onChange={upd("role")} data-testid="admin-member-role" className={inputCls} /></FormField>
-          <div className="md:col-span-2"><FormField label="Image URL"><input value={form.image_url} onChange={upd("image_url")} data-testid="admin-member-image" className={inputCls} placeholder="https://..." /></FormField></div>
+          <div className="md:col-span-2"><FormField label="Image (URL or Upload)"><ImageUploadField value={form.image_url} onChange={(v) => setForm((f) => ({ ...f, image_url: v }))} testId="admin-member-image" /></FormField></div>
           <div className="md:col-span-2"><FormField label="Short Bio"><textarea rows={2} value={form.bio} onChange={upd("bio")} data-testid="admin-member-bio" className={inputCls} /></FormField></div>
           <FormField label="LinkedIn URL"><input value={form.linkedin} onChange={upd("linkedin")} data-testid="admin-member-linkedin" className={inputCls} /></FormField>
           <FormField label="Twitter URL"><input value={form.twitter} onChange={upd("twitter")} data-testid="admin-member-twitter" className={inputCls} /></FormField>
