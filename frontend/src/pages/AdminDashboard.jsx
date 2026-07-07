@@ -3,7 +3,7 @@ import { Link, Navigate } from "react-router-dom";
 import { api, formatApiErrorDetail } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { Logo } from "../components/Logo";
-import { LogOut, Plus, Edit3, Trash2, Mail, X, CheckCircle2, Package } from "lucide-react";
+import { LogOut, Plus, Edit3, Trash2, Mail, X, CheckCircle2, Package, Users } from "lucide-react";
 import { toast } from "sonner";
 
 const CATEGORIES = ["monthly", "six_month", "twelve_month", "welcome", "ott"];
@@ -12,15 +12,23 @@ const EMPTY_PLAN = {
   validity_days: 30, validity_label: "30 Days", benefits: "",
   popular: false, display_order: 0, active: true,
 };
+const EMPTY_MEMBER = {
+  name: "", role: "", image_url: "", bio: "",
+  linkedin: "", twitter: "", email: "",
+  display_order: 0, active: true,
+};
 
 export default function AdminDashboard() {
   const { admin, loading: authLoading, logout } = useAuth();
   const [tab, setTab] = useState("plans");
   const [plans, setPlans] = useState([]);
   const [contacts, setContacts] = useState([]);
+  const [team, setTeam] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  const [editingMember, setEditingMember] = useState(null);
+  const [showMemberForm, setShowMemberForm] = useState(false);
 
   useEffect(() => {
     if (!admin) return;
@@ -31,11 +39,12 @@ export default function AdminDashboard() {
   const reload = async () => {
     setLoading(true);
     try {
-      const [plansRes, contactsRes] = await Promise.all([
+      const [plansRes, contactsRes, teamRes] = await Promise.all([
         api.get("/admin/plans"),
         api.get("/admin/contacts"),
+        api.get("/admin/team"),
       ]);
-      setPlans(plansRes.data); setContacts(contactsRes.data);
+      setPlans(plansRes.data); setContacts(contactsRes.data); setTeam(teamRes.data);
     } catch (err) { toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Failed to load"); }
     finally { setLoading(false); }
   };
@@ -74,6 +83,24 @@ export default function AdminDashboard() {
     catch (err) { toast.error("Failed"); }
   };
 
+  const saveMember = async (data) => {
+    try {
+      if (editingMember?.id) {
+        await api.patch(`/admin/team/${editingMember.id}`, data);
+        toast.success("Team member updated");
+      } else {
+        await api.post("/admin/team", data);
+        toast.success("Team member added");
+      }
+      setShowMemberForm(false); setEditingMember(null); reload();
+    } catch (err) { toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Save failed"); }
+  };
+  const deleteMember = async (id) => {
+    if (!window.confirm("Remove this team member?")) return;
+    try { await api.delete(`/admin/team/${id}`); reload(); toast.success("Member removed"); }
+    catch (err) { toast.error("Failed"); }
+  };
+
   const unreadCount = contacts.filter((c) => !c.read).length;
 
   return (
@@ -104,6 +131,9 @@ export default function AdminDashboard() {
             <TabBtn active={tab === "plans"} onClick={() => setTab("plans")} testId="admin-tab-plans">
               <Package size={14} /> Plans <span className="font-mono-metric text-xs text-slate-500">({plans.length})</span>
             </TabBtn>
+            <TabBtn active={tab === "team"} onClick={() => setTab("team")} testId="admin-tab-team">
+              <Users size={14} /> Team <span className="font-mono-metric text-xs text-slate-500">({team.length})</span>
+            </TabBtn>
             <TabBtn active={tab === "contacts"} onClick={() => setTab("contacts")} testId="admin-tab-contacts">
               <Mail size={14} /> Enquiries {unreadCount > 0 && <span className="ml-1 font-mono-metric text-xs bg-[#F26B21] text-white px-1.5 rounded-full">{unreadCount}</span>}
             </TabBtn>
@@ -113,6 +143,8 @@ export default function AdminDashboard() {
         {loading ? <div className="text-slate-400">Loading…</div> : (
           tab === "plans" ? (
             <PlansTable plans={plans} onEdit={(p) => { setEditing(p); setShowForm(true); }} onDelete={deletePlan} onNew={() => { setEditing(null); setShowForm(true); }} />
+          ) : tab === "team" ? (
+            <TeamTable team={team} onEdit={(m) => { setEditingMember(m); setShowMemberForm(true); }} onDelete={deleteMember} onNew={() => { setEditingMember(null); setShowMemberForm(true); }} />
           ) : (
             <ContactsTable contacts={contacts} onRead={markRead} onDelete={deleteContact} />
           )
@@ -120,6 +152,7 @@ export default function AdminDashboard() {
       </div>
 
       {showForm && <PlanForm initial={editing} onSave={savePlan} onClose={() => { setShowForm(false); setEditing(null); }} />}
+      {showMemberForm && <MemberForm initial={editingMember} onSave={saveMember} onClose={() => { setShowMemberForm(false); setEditingMember(null); }} />}
     </div>
   );
 }
@@ -267,3 +300,74 @@ const FormField = ({ label, children }) => (
     {children}
   </div>
 );
+
+function TeamTable({ team, onEdit, onDelete, onNew }) {
+  return (
+    <div>
+      <div className="mb-4 flex justify-end">
+        <button onClick={onNew} data-testid="admin-new-member-btn" className="hn-btn-primary inline-flex items-center gap-2 text-sm !py-2">
+          <Plus size={14} /> New Member
+        </button>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="admin-team-list">
+        {team.map((m) => (
+          <div key={m.id} className="hn-card rounded-xl p-5 flex gap-4" data-testid={`admin-team-row-${m.id}`}>
+            {m.image_url ? (
+              <img src={m.image_url} alt={m.name} className="w-16 h-16 rounded-lg object-cover flex-shrink-0" />
+            ) : (
+              <div className="w-16 h-16 rounded-lg bg-[#020617] border border-white/10 grid place-items-center text-slate-600 text-xs flex-shrink-0">no img</div>
+            )}
+            <div className="flex-1 min-w-0">
+              <div className="font-display font-semibold text-white truncate">{m.name}</div>
+              <div className="text-xs uppercase tracking-widest font-mono-metric text-[#F26B21] mt-0.5">{m.role}</div>
+              <div className="mt-1 text-xs text-slate-500">Order: {m.display_order} · {m.active ? <span className="text-emerald-400">Active</span> : <span className="text-slate-500">Hidden</span>}</div>
+            </div>
+            <div className="flex flex-col gap-1">
+              <button onClick={() => onEdit(m)} data-testid={`admin-team-edit-${m.id}`} className="p-2 rounded-md hover:bg-white/5 text-slate-300"><Edit3 size={14} /></button>
+              <button onClick={() => onDelete(m.id)} data-testid={`admin-team-delete-${m.id}`} className="p-2 rounded-md hover:bg-red-500/10 text-red-400"><Trash2 size={14} /></button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MemberForm({ initial, onSave, onClose }) {
+  const [form, setForm] = useState(initial ? { ...initial } : { ...EMPTY_MEMBER });
+  const upd = (k) => (e) => {
+    const v = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    setForm((f) => ({ ...f, [k]: v }));
+  };
+  const submit = (e) => {
+    e.preventDefault();
+    onSave({ ...form, display_order: Number(form.display_order) });
+  };
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm grid place-items-center p-4" data-testid="admin-member-form-modal">
+      <div className="w-full max-w-2xl hn-card rounded-2xl p-8 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="font-display text-2xl font-bold text-white">{initial ? "Edit Team Member" : "New Team Member"}</h2>
+          <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-md text-slate-400" data-testid="admin-member-form-close"><X size={18} /></button>
+        </div>
+        <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormField label="Name"><input required value={form.name} onChange={upd("name")} data-testid="admin-member-name" className={inputCls} /></FormField>
+          <FormField label="Role"><input required value={form.role} onChange={upd("role")} data-testid="admin-member-role" className={inputCls} /></FormField>
+          <div className="md:col-span-2"><FormField label="Image URL"><input value={form.image_url} onChange={upd("image_url")} data-testid="admin-member-image" className={inputCls} placeholder="https://..." /></FormField></div>
+          <div className="md:col-span-2"><FormField label="Short Bio"><textarea rows={2} value={form.bio} onChange={upd("bio")} data-testid="admin-member-bio" className={inputCls} /></FormField></div>
+          <FormField label="LinkedIn URL"><input value={form.linkedin} onChange={upd("linkedin")} data-testid="admin-member-linkedin" className={inputCls} /></FormField>
+          <FormField label="Twitter URL"><input value={form.twitter} onChange={upd("twitter")} data-testid="admin-member-twitter" className={inputCls} /></FormField>
+          <FormField label="Email"><input type="email" value={form.email} onChange={upd("email")} data-testid="admin-member-email" className={inputCls} /></FormField>
+          <FormField label="Display Order"><input type="number" value={form.display_order} onChange={upd("display_order")} data-testid="admin-member-order" className={inputCls} /></FormField>
+          <div className="md:col-span-2 flex items-center gap-6">
+            <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={form.active} onChange={upd("active")} data-testid="admin-member-active" /> Active (visible on Team page)</label>
+          </div>
+          <div className="md:col-span-2 flex justify-end gap-3 mt-2">
+            <button type="button" onClick={onClose} className="hn-btn-secondary text-sm !py-2">Cancel</button>
+            <button type="submit" data-testid="admin-member-save" className="hn-btn-primary text-sm !py-2">Save Member</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}

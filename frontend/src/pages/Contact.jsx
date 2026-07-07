@@ -34,9 +34,9 @@ export default function Contact() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Info */}
         <div className="space-y-4">
-          <InfoBlock icon={Mail} label="Email" value="hello@hydranet.in" testId="contact-info-email" />
-          <InfoBlock icon={Phone} label="Phone" value="+91 90000 00000" testId="contact-info-phone" />
-          <InfoBlock icon={MapPin} label="Office" value="Mohanpur, West Bengal — India" testId="contact-info-address" />
+          <InfoBlock icon={Mail} label="Email" value="help@hydranetbroadband.in" testId="contact-info-email" />
+          <InfoBlock icon={Phone} label="Phone" value="+91 70635 82555 / 70635 82561" testId="contact-info-phone" />
+          <InfoBlock icon={MapPin} label="Office" value="Bagda, Mohanpur, West Midnapore, West Bengal — 721436, India (Near PNB Bank)" testId="contact-info-address" />
           <div className="hn-card rounded-xl p-6">
             <div className="hn-overline mb-3">Support Hours</div>
             <div className="text-white font-mono-metric">24 × 7 × 365</div>
@@ -94,7 +94,7 @@ export default function Contact() {
           <div className="p-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/5 bg-[#020617]">
             <div className="text-sm text-slate-300">
               <span className="text-[#F26B21] font-mono-metric text-xs uppercase tracking-widest mr-2">HQ</span>
-              Mohanpur, West Bengal, India
+              Bagda, Mohanpur, West Midnapore, West Bengal — 721436, India (Near PNB Bank)
             </div>
             <a
               href="https://www.openstreetmap.org/?mlat=21.8419805&mlon=87.4165726#map=16/21.8419805/87.4165726"

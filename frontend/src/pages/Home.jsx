@@ -1,5 +1,8 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, Zap, Shield, Headphones, Wifi, Tv, Router } from "lucide-react";
+import { ArrowRight, Zap, Shield, Headphones, Wifi, Tv, Router, Check, Sparkles, Star, Quote } from "lucide-react";
+import { api } from "../lib/api";
+import { LogoMarquee } from "../components/LogoMarquee";
 
 const HERO_IMG = "https://images.unsplash.com/photo-1534312527009-56c7016453e6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1MTN8MHwxfHNlYXJjaHwyfHxmaWJlciUyMG9wdGljJTIwY2FibGVzJTIwZGFyayUyMGFic3RyYWN0JTIwdGVjaCUyMG9yYW5nZSUyMGJsdWV8ZW58MHx8fHwxNzgzMzk5MTI3fDA&ixlib=rb-4.1.0&q=85";
 
@@ -7,11 +10,11 @@ const STATS = [
   { k: "99.9%", v: "Network Uptime" },
   { k: "24/7", v: "Human Support" },
   { k: "12k+", v: "Happy Homes" },
-  { k: "100", v: "Mbps Max Speed" },
+  { k: "1 Gbps", v: "Max Speed" },
 ];
 
 const FEATURES = [
-  { icon: Zap, title: "Blazing Fiber Speeds", desc: "Up to 100 Mbps symmetric fiber straight to your home. Perfect for 4K streams and lag-free gaming." },
+  { icon: Zap, title: "Blazing Fiber Speeds", desc: "Up to 1 Gbps symmetric fiber straight to your home. Perfect for 4K streams and lag-free gaming." },
   { icon: Router, title: "Free Router", desc: "Welcome plans include a free Single or Dual Band router — installed & configured on day one." },
   { icon: Tv, title: "26+ OTT Bundles", desc: "Watch Zee5, SonyLIV, Amazon Prime, Jiohotstar & more — bundled with your broadband." },
   { icon: Shield, title: "Enterprise-Grade Reliability", desc: "Redundant links, active monitoring, and rapid restoration keep you online 24/7." },
@@ -19,7 +22,30 @@ const FEATURES = [
   { icon: Wifi, title: "Whole-Home Coverage", desc: "Dual-band routers and mesh options ensure Wi-Fi in every corner of your house." },
 ];
 
+const OTT_LOGOS = [
+  { label: "JioHotstar", color: "#1F80E0" },
+  { label: "Amazon Prime", color: "#00A8E1" },
+  { label: "Zee5", color: "#8228E9" },
+  { label: "SonyLIV", color: "#EE1D46" },
+  { label: "Hoichoi", color: "#E31E24" },
+  { label: "PlayBox TV", color: "#F26B21" },
+  { label: "Shemaroo", color: "#F5A623" },
+  { label: "Aao Nxt", color: "#00C2A8" },
+  { label: "Saavan", color: "#2BC5B4" },
+];
+
+const REVIEWS = [
+  { name: "Anirban Ghosh", role: "Mohanpur", rating: 5, text: "Switched from a big-name ISP last year — never buffers, and the installation guys were on time to the minute. Speed is exactly what I pay for." },
+  { name: "Sudipta Banerjee", role: "West Midnapore", rating: 5, text: "The OTT bundle alone pays for the plan. Support picks up in 2 rings and actually knows what they're doing. Highly recommend." },
+  { name: "Rajesh Kumar", role: "Bagda", rating: 5, text: "Been with Hydranet 2 years. Zero downtime, honest billing, and when there was a cable cut in the area they fixed it before I noticed." },
+];
+
 export default function Home() {
+  const [featuredPlans, setFeaturedPlans] = useState([]);
+  useEffect(() => {
+    api.get("/plans", { params: { category: "monthly" } }).then(({ data }) => setFeaturedPlans(data.slice(0, 4)));
+  }, []);
+
   return (
     <div>
       {/* Hero */}
@@ -39,7 +65,7 @@ export default function Home() {
               Broadband that <span className="hn-gradient-text">actually flies.</span>
             </h1>
             <p className="mt-6 text-lg text-slate-300 max-w-2xl leading-relaxed">
-              Fiber-fast internet, curated OTT bundles, and a free router — starting at <span className="font-mono-metric text-white">₹347/mo</span>. No throttling, no surprises.
+              Fiber-fast internet up to <span className="font-mono-metric text-white">1 Gbps</span>, curated OTT bundles, and a free router — starting at <span className="font-mono-metric text-white">₹347/mo</span>. No throttling, no surprises.
             </p>
             <div className="mt-10 flex flex-wrap gap-4">
               <Link to="/plans" className="hn-btn-primary inline-flex items-center gap-2" data-testid="hero-cta-plans">
@@ -49,7 +75,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Stats bar */}
           <div className="mt-20 grid grid-cols-2 md:grid-cols-4 gap-px bg-white/5 rounded-xl overflow-hidden hn-glass">
             {STATS.map((s, i) => (
               <div key={i} className="p-6 bg-[#0F172A]/60" data-testid={`hero-stat-${i}`}>
@@ -62,7 +87,7 @@ export default function Home() {
       </section>
 
       {/* Features */}
-      <section className="mx-auto max-w-7xl px-6 lg:px-10 py-24 lg:py-32" data-testid="home-features">
+      <section className="mx-auto max-w-7xl px-6 lg:px-10 py-24" data-testid="home-features">
         <div className="max-w-2xl mb-16">
           <div className="hn-overline mb-4">Why Hydranet</div>
           <h2 className="font-display text-4xl sm:text-5xl font-bold tracking-tight text-white">
@@ -71,12 +96,81 @@ export default function Home() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {FEATURES.map((f, i) => (
-            <div key={i} className="hn-card rounded-xl p-8 group" data-testid={`feature-card-${i}`}>
+            <div key={i} className="hn-card rounded-xl p-8" data-testid={`feature-card-${i}`}>
               <div className="w-11 h-11 rounded-md grid place-items-center bg-[#F26B21]/10 text-[#F26B21] border border-[#F26B21]/20 mb-6">
                 <f.icon size={20} strokeWidth={1.5} />
               </div>
               <h3 className="font-display text-xl font-semibold text-white">{f.title}</h3>
               <p className="mt-3 text-slate-400 text-sm leading-relaxed">{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Plans preview */}
+      <section className="mx-auto max-w-7xl px-6 lg:px-10 py-16" data-testid="home-plans-section">
+        <div className="flex items-end justify-between flex-wrap gap-4 mb-10">
+          <div>
+            <div className="hn-overline mb-3">Popular Plans</div>
+            <h2 className="font-display text-4xl font-bold text-white">Pick your <span className="text-[#F26B21]">speed.</span></h2>
+          </div>
+          <Link to="/plans" className="text-sm text-[#F26B21] hover:underline inline-flex items-center gap-1" data-testid="home-view-all-plans">
+            View all plans <ArrowRight size={14} />
+          </Link>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+          {featuredPlans.map((p) => (
+            <div key={p.id} className={`relative rounded-2xl p-6 flex flex-col ${p.popular ? "border border-[#F26B21]/60 bg-[#0F2650]/40" : "border border-white/10 bg-[#0F172A]"}`} data-testid={`home-plan-${p.id}`}>
+              {p.popular && (
+                <div className="absolute -top-3 left-6 inline-flex items-center gap-1 font-mono-metric text-[10px] uppercase tracking-widest px-3 py-1 rounded-full bg-[#F26B21] text-white">
+                  <Sparkles size={10} /> Popular
+                </div>
+              )}
+              <div className="hn-overline mb-2">{p.validity_label}</div>
+              <div className="font-display text-xl font-bold text-white">{p.name}</div>
+              <div className="mt-4 flex items-baseline gap-1">
+                <span className="text-slate-400 font-mono-metric">₹</span>
+                <span className="font-mono-metric text-3xl font-bold text-white">{p.price.toLocaleString("en-IN")}</span>
+              </div>
+              <div className="text-[10px] uppercase tracking-widest font-mono-metric text-[#F26B21] mt-1">+18% GST Extra</div>
+              <div className="mt-4 flex items-center gap-2">
+                <span className="font-mono-metric text-2xl font-bold text-[#F26B21]">{p.speed_mbps}</span>
+                <span className="text-xs uppercase tracking-widest text-slate-400">Mbps</span>
+              </div>
+              <Link to="/plans" className={`mt-5 text-center text-sm ${p.popular ? "hn-btn-primary" : "hn-btn-secondary"}`}>Choose</Link>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* OTT carousel */}
+      <section className="py-16 border-y border-white/5 bg-[#020617]/40" data-testid="home-ott-section">
+        <div className="mx-auto max-w-7xl px-6 lg:px-10 mb-8">
+          <div className="hn-overline mb-3">OTT Bundles Included</div>
+          <h2 className="font-display text-3xl font-bold text-white">Watch <span className="text-[#F26B21]">everything</span> on us.</h2>
+          <p className="text-slate-400 mt-2 text-sm">Pick a Welcome or OTT plan and get access to 30+ streaming services.</p>
+        </div>
+        <LogoMarquee items={OTT_LOGOS} testId="home-ott-marquee" speed={45} />
+      </section>
+
+      {/* Reviews */}
+      <section className="mx-auto max-w-7xl px-6 lg:px-10 py-24" data-testid="home-reviews-section">
+        <div className="max-w-2xl mb-12">
+          <div className="hn-overline mb-3">Customer Love</div>
+          <h2 className="font-display text-4xl font-bold text-white">What our <span className="text-[#F26B21]">customers say.</span></h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {REVIEWS.map((r, i) => (
+            <div key={i} className="hn-card rounded-xl p-8 relative" data-testid={`home-review-${i}`}>
+              <Quote size={28} className="text-[#F26B21]/30 absolute top-6 right-6" />
+              <div className="flex items-center gap-1 mb-4">
+                {Array.from({ length: r.rating }).map((_, j) => <Star key={j} size={14} className="fill-[#F26B21] text-[#F26B21]" />)}
+              </div>
+              <p className="text-slate-300 text-sm leading-relaxed">"{r.text}"</p>
+              <div className="mt-6 pt-6 border-t border-white/5">
+                <div className="font-display font-semibold text-white">{r.name}</div>
+                <div className="text-xs uppercase tracking-widest font-mono-metric text-[#F26B21] mt-1">{r.role}</div>
+              </div>
             </div>
           ))}
         </div>

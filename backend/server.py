@@ -184,6 +184,42 @@ class ContactCreate(BaseModel):
     subject: str = ""
     message: str
 
+class TeamMember(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    role: str
+    image_url: str = ""
+    bio: str = ""
+    linkedin: str = ""
+    twitter: str = ""
+    email: str = ""
+    display_order: int = 0
+    active: bool = True
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class TeamMemberCreate(BaseModel):
+    name: str
+    role: str
+    image_url: str = ""
+    bio: str = ""
+    linkedin: str = ""
+    twitter: str = ""
+    email: str = ""
+    display_order: int = 0
+    active: bool = True
+
+class TeamMemberUpdate(BaseModel):
+    name: Optional[str] = None
+    role: Optional[str] = None
+    image_url: Optional[str] = None
+    bio: Optional[str] = None
+    linkedin: Optional[str] = None
+    twitter: Optional[str] = None
+    email: Optional[str] = None
+    display_order: Optional[int] = None
+    active: Optional[bool] = None
+
 # ---------------- Seed data ----------------
 SEED_PLANS = [
     # Monthly
@@ -239,6 +275,30 @@ async def seed_admin():
             await db.admins.update_one({"username": username}, {"$set": updates})
             logger.info(f"Updated admin user: {username}")
 
+SEED_TEAM = [
+    {"name": "Subhadeep Pahari", "role": "Founder & CEO", "image_url": "https://images.unsplash.com/photo-1532170579297-281918c8ae72?w=500&auto=format&fit=crop&q=60", "display_order": 1},
+    {"name": "Riya Sharma", "role": "Chief Technology Officer", "image_url": "https://images.unsplash.com/photo-1574281570877-bd815ebb50a4?w=500&auto=format&fit=crop&q=60", "display_order": 2},
+    {"name": "Arjun Verma", "role": "Head of Network Ops", "image_url": "https://images.unsplash.com/photo-1506863530036-1efeddceb993?w=500&auto=format&fit=crop&q=60", "display_order": 3},
+    {"name": "Priya Nair", "role": "Head of Customer Success", "image_url": "https://images.unsplash.com/photo-1532171875345-9712d9d4f65a?w=500&auto=format&fit=crop&q=60", "display_order": 4},
+    {"name": "Rohan Das", "role": "Lead Field Engineer", "image_url": "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=500&auto=format&fit=crop&q=60", "display_order": 5},
+    {"name": "Ananya Roy", "role": "Marketing & Growth", "image_url": "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=500&auto=format&fit=crop&q=60", "display_order": 6},
+    {"name": "Karan Mehta", "role": "Business Development", "image_url": "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=500&auto=format&fit=crop&q=60", "display_order": 7},
+    {"name": "Sneha Iyer", "role": "Support Team Lead", "image_url": "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=500&auto=format&fit=crop&q=60", "display_order": 8},
+]
+
+async def seed_team():
+    count = await db.team_members.count_documents({})
+    if count == 0:
+        docs = []
+        for m in SEED_TEAM:
+            member = TeamMember(**m)
+            d = member.model_dump()
+            d["created_at"] = d["created_at"].isoformat()
+            docs.append(d)
+        if docs:
+            await db.team_members.insert_many(docs)
+            logger.info(f"Seeded {len(docs)} team members")
+
 async def seed_plans():
     count = await db.plans.count_documents({})
     if count == 0:
@@ -265,6 +325,18 @@ async def list_plans(category: Optional[str] = None, active_only: bool = True):
     if active_only:
         query["active"] = True
     docs = await db.plans.find(query, {"_id": 0}).sort([("display_order", 1), ("price", 1)]).to_list(500)
+    for d in docs:
+        if isinstance(d.get("created_at"), str):
+            try:
+                d["created_at"] = datetime.fromisoformat(d["created_at"])
+            except ValueError:
+                d["created_at"] = datetime.now(timezone.utc)
+    return docs
+
+@api_router.get("/team", response_model=List[TeamMember])
+async def list_team(active_only: bool = True):
+    query = {"active": True} if active_only else {}
+    docs = await db.team_members.find(query, {"_id": 0}).sort([("display_order", 1)]).to_list(200)
     for d in docs:
         if isinstance(d.get("created_at"), str):
             try:
@@ -463,6 +535,49 @@ async def admin_delete_contact(contact_id: str, current: dict = Depends(get_curr
         raise HTTPException(status_code=404, detail="Contact not found")
     return {"message": "Deleted"}
 
+# ---------------- Routes: Admin Team ----------------
+@api_router.get("/admin/team", response_model=List[TeamMember])
+async def admin_list_team(current: dict = Depends(get_current_admin)):
+    docs = await db.team_members.find({}, {"_id": 0}).sort([("display_order", 1)]).to_list(200)
+    for d in docs:
+        if isinstance(d.get("created_at"), str):
+            try:
+                d["created_at"] = datetime.fromisoformat(d["created_at"])
+            except ValueError:
+                d["created_at"] = datetime.now(timezone.utc)
+    return docs
+
+@api_router.post("/admin/team", response_model=TeamMember)
+async def admin_create_team(payload: TeamMemberCreate, current: dict = Depends(get_current_admin)):
+    member = TeamMember(**payload.model_dump())
+    doc = member.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    await db.team_members.insert_one(doc)
+    return member
+
+@api_router.patch("/admin/team/{member_id}", response_model=TeamMember)
+async def admin_update_team(member_id: str, payload: TeamMemberUpdate, current: dict = Depends(get_current_admin)):
+    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    result = await db.team_members.update_one({"id": member_id}, {"$set": updates})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Team member not found")
+    doc = await db.team_members.find_one({"id": member_id}, {"_id": 0})
+    if isinstance(doc.get("created_at"), str):
+        try:
+            doc["created_at"] = datetime.fromisoformat(doc["created_at"])
+        except ValueError:
+            doc["created_at"] = datetime.now(timezone.utc)
+    return doc
+
+@api_router.delete("/admin/team/{member_id}")
+async def admin_delete_team(member_id: str, current: dict = Depends(get_current_admin)):
+    result = await db.team_members.delete_one({"id": member_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Team member not found")
+    return {"message": "Deleted"}
+
 # ---------------- App wiring ----------------
 app.include_router(api_router)
 
@@ -481,8 +596,10 @@ async def on_startup():
     await db.plans.create_index("category")
     await db.plans.create_index("id", unique=True)
     await db.contacts.create_index("id", unique=True)
+    await db.team_members.create_index("id", unique=True)
     await seed_admin()
     await seed_plans()
+    await seed_team()
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
