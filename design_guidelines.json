@@ -1,0 +1,135 @@
+{
+  "theme_and_archetype": {
+    "theme": "dark",
+    "archetype": "Archetype 4 (Swiss & High-Contrast) blended with Tech/Luxury",
+    "vibe": "Unapologetic, Blazing Fast, Reliable, Technical yet accessible, High-end Editorial"
+  },
+  "colors": {
+    "background": "#020617",
+    "surface_1": "#0F172A",
+    "surface_2": "#1E293B",
+    "surface_glass": "rgba(15, 38, 80, 0.6)",
+    "brand_primary": "#F26B21",
+    "brand_primary_hover": "#F78B4D",
+    "brand_navy": "#0F2650",
+    "text_primary": "#F8FAFC",
+    "text_secondary": "#94A3B8",
+    "border": "#334155",
+    "border_light": "#1E293B",
+    "success": "#10B981",
+    "warning": "#F59E0B",
+    "error": "#EF4444"
+  },
+  "typography": {
+    "fonts": {
+      "headings": "'Cabinet Grotesk', sans-serif",
+      "body": "'IBM Plex Sans', sans-serif",
+      "metrics_prices_code": "'JetBrains Mono', monospace"
+    },
+    "hierarchy": {
+      "h1": "text-5xl sm:text-6xl lg:text-7xl font-black tracking-tighter leading-none",
+      "h2": "text-4xl sm:text-5xl font-bold tracking-tight leading-tight",
+      "h3": "text-2xl sm:text-3xl font-semibold tracking-tight",
+      "h4": "text-xl sm:text-2xl font-semibold",
+      "body_lg": "text-lg leading-relaxed text-slate-300",
+      "body": "text-base leading-relaxed text-slate-400",
+      "body_sm": "text-sm leading-normal text-slate-500",
+      "metrics": "font-mono font-bold tracking-tight",
+      "overline": "text-xs font-mono uppercase tracking-[0.2em] text-[#F26B21]"
+    }
+  },
+  "spacing_and_layout": {
+    "philosophy": "Generous Spacing, Asymmetry, Optical Alignment over Geometrical",
+    "hero": "Asymmetrical, left-aligned, overlapping textual elements, dramatic viewport-scaled headings.",
+    "grid_system": "Bento Grid (Tetris Mode) for marketing/services. Control Room Grid for Admin Dashboard.",
+    "section_padding": "py-20 md:py-32",
+    "container_padding": "px-6 md:px-12 lg:px-24",
+    "card_padding": "p-6 sm:p-8"
+  },
+  "surfaces": {
+    "header": "Crystal Glass: backdrop-blur-xl bg-[#020617]/70 border-b border-white/10 shadow-sm",
+    "marketing_cards": "Tactile Brutalism: 1px solid border (#334155), flat dark background (#0F172A), sharp or max 8px radius.",
+    "pricing_cards": "Glassmorphism for premium tiers: backdrop-blur-lg bg-[#0F2650]/40 border border-[#F26B21]/50. Solid for standard tiers.",
+    "dashboard_cards": "Flat, cardless or 1px subtle border, very dense spacing. No heavy shadows."
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-[#F26B21] text-white font-semibold rounded-md hover:bg-[#F78B4D] transition-colors duration-200 px-6 py-3",
+      "secondary": "bg-transparent border border-[#334155] text-white font-medium rounded-md hover:bg-[#1E293B] hover:border-slate-500 transition-all duration-200 px-6 py-3"
+    },
+    "forms": "Use Shadcn customized for dark mode. Darker input backgrounds (#0F172A), border (#334155), lighter placeholders.",
+    "pricing_toggle": "Pill-shaped toggle, distinct active state using #F26B21.",
+    "badges": "font-mono text-xs px-2 py-1 bg-[#F26B21]/10 text-[#F26B21] border border-[#F26B21]/20 rounded-full"
+  },
+  "motion_and_interactions": {
+    "hover_states": "Cards lift slightly (-translate-y-1) with border color shifting to #F26B21/50.",
+    "micro_animations": "Use Framer Motion for staggered list entrances. Smooth scroll using Lenis (if applicable).",
+    "transitions": "transition-all duration-300 ease-out"
+  },
+  "image_urls": {
+    "hero_backgrounds": [
+      {
+        "url": "https://images.unsplash.com/photo-1534312527009-56c7016453e6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1MTN8MHwxfHNlYXJjaHwyfHxmaWJlciUyMG9wdGljJTIwY2FibGVzJTIwZGFyayUyMGFic3RyYWN0JTIwdGVjaCUyMG9yYW5nZSUyMGJsdWV8ZW58MHx8fHwxNzgzMzk5MTI3fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Abstract orange/blue fiber optic light streaks, perfect for high-speed internet hero background."
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1489648022186-8f49310909a0?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1NzZ8MHwxfHNlYXJjaHwyfHxhYnN0cmFjdCUyMGRhcmslMjBhcmNoaXRlY3R1cmUlMjBnZW9tZXRyaWMlMjBvcmFuZ2UlMjBsaWdodHxlbnwwfHx8fDE3ODMzOTkxNDV8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Dark geometric orange architecture, good for structural/business section."
+      }
+    ],
+    "services_and_tech": [
+      {
+        "url": "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzV8MHwxfHNlYXJjaHwxfHxzZXJ2ZXIlMjByYWNrJTIwbGlnaHRzJTIwZGFyayUyMGRhdGElMjBjZW50ZXIlMjBvcmFuZ2UlMjBibHVlfGVufDB8fHx8MTc4MzM5OTE0NXww&ixlib=rb-4.1.0&q=85",
+        "description": "Server rack cables, represents infrastructure/reliability."
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1762163516269-3c143e04175c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzV8MHwxfHNlYXJjaHwzfHxzZXJ2ZXIlMjByYWNrJTIwbGlnaHRzJTIwZGFyayUyMGRhdGElMjBjZW50ZXIlMjBvcmFuZ2UlMjBibHVlfGVufDB8fHx8MTc4MzM5OTE0NXww&ixlib=rb-4.1.0&q=85",
+        "description": "Server rack with blinking lights."
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1613280194169-6bb2f32a6bfa?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1MDZ8MHwxfHNlYXJjaHwyfHxzbWFydCUyMGhvbWUlMjBsaXZpbmclMjByb29tJTIwbmlnaHQlMjBkYXJrJTIwYmx1ZSUyMG9yYW5nZSUyMHRvbmV8ZW58MHx8fHwxNzgzMzk5MTI3fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Smart home living room at night with TV, for OTT bundle visualization."
+      }
+    ],
+    "team_members": [
+      {
+        "url": "https://images.unsplash.com/photo-1532170579297-281918c8ae72?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODR8MHwxfHNlYXJjaHwyfHxwZW9wbGUlMjBwb3J0cmFpdCUyMHByb2Zlc3Npb25hbCUyMG5ldXRyYWwlMjBiYWNrZ3JvdW5kJTIwZGFya3xlbnwwfHx8fDE3ODMzOTkxMjd8MA&ixlib=rb-4.1.0&q=85",
+        "name": "Alex Carter",
+        "role": "CEO & Founder"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1574281570877-bd815ebb50a4?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODR8MHwxfHNlYXJjaHw0fHxwZW9wbGUlMjBwb3J0cmFpdCUyMHByb2Zlc3Npb25hbCUyMG5ldXRyYWwlMjBiYWNrZ3JvdW5kJTIwZGFya3xlbnwwfHx8fDE3ODMzOTkxMjd8MA&ixlib=rb-4.1.0&q=85",
+        "name": "Jordan Lee",
+        "role": "CTO"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1506863530036-1efeddceb993?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODR8MHwxfHNlYXJjaHwzfHxwZW9wbGUlMjBwb3J0cmFpdCUyMHByb2Zlc3Npb25hbCUyMG5ldXRyYWwlMjBiYWNrZ3JvdW5kJTIwZGFya3xlbnwwfHx8fDE3ODMzOTkxMjd8MA&ixlib=rb-4.1.0&q=85",
+        "name": "Sam Taylor",
+        "role": "Head of Support"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1532171875345-9712d9d4f65a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODR8MHwxfHNlYXJjaHwxfHxwZW9wbGUlMjBwb3J0cmFpdCUyMHByb2Zlc3Npb25hbCUyMG5ldXRyYWwlMjBiYWNrZ3JvdW5kJTIwZGFya3xlbnwwfHx8fDE3ODMzOTkxMjd8MA&ixlib=rb-4.1.0&q=85",
+        "name": "Riley Smith",
+        "role": "Network Engineer"
+      }
+    ]
+  },
+  "icons": {
+    "library": "lucide-react",
+    "stroke_width": 1.5,
+    "strategy": "Minimalist, tech-focused, paired with JetBrains Mono for stats."
+  },
+  "testing_attributes": {
+    "strategy": "All interactive elements MUST use data-testid kebab-case role-based attributes (e.g., data-testid='hero-subscribe-button', data-testid='admin-login-submit')."
+  },
+  "instructions_to_main_agent": [
+    "Install and use 'Cabinet Grotesk' (headings), 'IBM Plex Sans' (body), and 'JetBrains Mono' (prices/speeds) via Google Fonts or next/font (if Next.js) or standard CSS import.",
+    "Implement the dark theme strictly. Do NOT use gradients that muddy the background. Keep the deep navy (#020617) as a solid base.",
+    "For the Plans Page, build a robust toggle system (Monthly, 6-Month, 12-Month, Welcome, OTT). Use JetBrains Mono for the speeds and prices to give a technical, data-driven feel.",
+    "Use the brand orange (#F26B21) sparingly but sharply for CTAs, speed metrics, and active states. It should pop against the dark background.",
+    "Build the Admin Panel (/admin route) using Shadcn components (tables, dialogs, forms) without heavy cards (use cardless/minimal borders) for a dense 'control room' vibe.",
+    "Implement an OTP-style password reset UI on the admin login screen.",
+    "Always apply 'data-testid' to actionable items (forms, toggles, buttons) for testing.",
+    "Do not use generic font Inter. Ensure all typography choices are applied in the tailwind config and root CSS."
+  ]
+}
