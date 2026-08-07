@@ -7,9 +7,13 @@ import {
   LogOut, Plus, Edit3, Trash2, Mail, X, CheckCircle2, Package, Users,
   Star, Handshake, Ticket as TicketIcon, ShieldCheck, MessageSquarePlus,
   ChevronDown, Clock, AlertCircle, CheckCircle, XCircle, Settings, Tag,
+  IndianRupee, UserCheck, Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ImageUploadField } from "../components/ImageUploadField";
+import { FinanceTab } from "./FinanceTab";
+import { AttendanceTab } from "./AttendanceTab";
+import { RolesTab } from "./RolesTab";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const PLAN_CATEGORIES = ["monthly", "six_month", "twelve_month", "welcome", "ott"];
@@ -60,6 +64,7 @@ export default function AdminDashboard() {
   const [tickets, setTickets] = useState([]);
   const [categories, setCategories] = useState([]);
   const [users, setUsers] = useState([]);
+  const [roles, setRoles] = useState([]);
 
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -83,25 +88,40 @@ export default function AdminDashboard() {
   const reload = async () => {
     setLoading(true);
     try {
-      const reqs = [
-        api.get("/admin/plans"),
-        api.get("/admin/contacts"),
-        api.get("/admin/team"),
-        api.get("/admin/testimonials"),
-        api.get("/admin/partner-enquiries"),
-        api.get("/admin/tickets"),
-        api.get("/admin/ticket-categories"),
-      ];
-      if (admin?.role === "super_admin") reqs.push(api.get("/admin/users"));
-      const results = await Promise.all(reqs);
-      setPlans(results[0].data);
-      setContacts(results[1].data);
-      setTeam(results[2].data);
-      setTestimonials(results[3].data);
-      setPartnerEnquiries(results[4].data);
-      setTickets(results[5].data);
-      setCategories(results[6].data);
-      if (admin?.role === "super_admin" && results[7]) setUsers(results[7].data);
+      const permissions = admin?.permissions || [];
+      const isSuperAdmin = admin?.role === "super_admin";
+      const canContentRead = permissions.includes("content_read") || isSuperAdmin;
+      const canTicketsRead = permissions.includes("tickets_read") || isSuperAdmin;
+      const canUsersManage = permissions.includes("users_manage") || isSuperAdmin;
+
+      const requests = {};
+      if (canContentRead) {
+        requests.plans = api.get("/admin/plans");
+        requests.contacts = api.get("/admin/contacts");
+        requests.team = api.get("/admin/team");
+        requests.testimonials = api.get("/admin/testimonials");
+        requests.partnerEnquiries = api.get("/admin/partner-enquiries");
+      }
+      if (canTicketsRead) {
+        requests.tickets = api.get("/admin/tickets");
+        requests.categories = api.get("/admin/ticket-categories");
+      }
+      if (isSuperAdmin || canUsersManage) requests.users = api.get("/admin/users");
+      if (canUsersManage) requests.roles = api.get("/admin/roles");
+
+      const results = await Promise.all(
+        Object.entries(requests).map(async ([key, request]) => [key, (await request).data]),
+      );
+      const data = Object.fromEntries(results);
+      setPlans(data.plans || []);
+      setContacts(data.contacts || []);
+      setTeam(data.team || []);
+      setTestimonials(data.testimonials || []);
+      setPartnerEnquiries(data.partnerEnquiries || []);
+      setTickets(data.tickets || []);
+      setCategories(data.categories || []);
+      setUsers(data.users || []);
+      setRoles(data.roles || []);
     } catch (err) { toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Failed to load"); }
     finally { setLoading(false); }
   };
@@ -222,7 +242,18 @@ export default function AdminDashboard() {
   const openTickets = tickets.filter(t => t.status === "open" || t.status === "in_progress").length;
   const unreadContacts = contacts.filter(c => !c.read).length;
   const unreadPartners = partnerEnquiries.filter(p => !p.read).length;
-  const canWrite = admin.role === "super_admin" || admin.role === "admin";
+  const perms = admin.permissions || [];
+  const canContentRead = perms.includes("content_read") || admin.role === "super_admin";
+  const canContentWrite = perms.includes("content_write") || admin.role === "super_admin";
+  const canTicketRead = perms.includes("tickets_read") || admin.role === "super_admin";
+  const canTicketWrite = perms.includes("tickets_write") || admin.role === "super_admin";
+  const canAttendanceRead = perms.includes("attendance_read") || admin.role === "super_admin";
+  const canAttendanceWrite = perms.includes("attendance_write") || admin.role === "super_admin";
+  const canFinance = perms.includes("finance_read") || admin.role === "super_admin";
+  const canUsersManage = perms.includes("users_manage") || admin.role === "super_admin";
+  const reloadRoles = async () => {
+    try { const { data } = await api.get("/admin/roles"); setRoles(data); } catch {}
+  };
 
   return (
     <div className="min-h-screen bg-[#020617]" data-testid="admin-dashboard">
@@ -255,46 +286,60 @@ export default function AdminDashboard() {
           </div>
           {/* Tab bar */}
           <div className="flex flex-wrap items-center gap-1 p-1 rounded-full border border-white/10 bg-[#0F172A]/60">
-            <TabBtn active={tab === "tickets"} onClick={() => setTab("tickets")} testId="admin-tab-tickets">
+            {canTicketRead && <TabBtn active={tab === "tickets"} onClick={() => setTab("tickets")} testId="admin-tab-tickets">
               <TicketIcon size={14} /> Tickets {openTickets > 0 && <Badge>{openTickets}</Badge>}
-            </TabBtn>
-            <TabBtn active={tab === "plans"} onClick={() => setTab("plans")} testId="admin-tab-plans">
+            </TabBtn>}
+            {canContentRead && <TabBtn active={tab === "plans"} onClick={() => setTab("plans")} testId="admin-tab-plans">
               <Package size={14} /> Plans
-            </TabBtn>
-            <TabBtn active={tab === "team"} onClick={() => setTab("team")} testId="admin-tab-team">
+            </TabBtn>}
+            {canContentRead && <TabBtn active={tab === "team"} onClick={() => setTab("team")} testId="admin-tab-team">
               <Users size={14} /> Team
-            </TabBtn>
-            <TabBtn active={tab === "testimonials"} onClick={() => setTab("testimonials")} testId="admin-tab-testimonials">
+            </TabBtn>}
+            {canContentRead && <TabBtn active={tab === "testimonials"} onClick={() => setTab("testimonials")} testId="admin-tab-testimonials">
               <Star size={14} /> Reviews
-            </TabBtn>
-            <TabBtn active={tab === "partners"} onClick={() => setTab("partners")} testId="admin-tab-partners">
+            </TabBtn>}
+            {canContentRead && <TabBtn active={tab === "partners"} onClick={() => setTab("partners")} testId="admin-tab-partners">
               <Handshake size={14} /> Partners {unreadPartners > 0 && <Badge>{unreadPartners}</Badge>}
-            </TabBtn>
-            <TabBtn active={tab === "contacts"} onClick={() => setTab("contacts")} testId="admin-tab-contacts">
+            </TabBtn>}
+            {canContentRead && <TabBtn active={tab === "contacts"} onClick={() => setTab("contacts")} testId="admin-tab-contacts">
               <Mail size={14} /> Enquiries {unreadContacts > 0 && <Badge>{unreadContacts}</Badge>}
-            </TabBtn>
-            {admin.role === "super_admin" && (
+            </TabBtn>}
+            {canFinance && (
+              <TabBtn active={tab === "finance"} onClick={() => setTab("finance")} testId="admin-tab-finance">
+                <IndianRupee size={14} /> Finance
+              </TabBtn>
+            )}
+            {canAttendanceRead && <TabBtn active={tab === "attendance"} onClick={() => setTab("attendance")} testId="admin-tab-attendance">
+              <UserCheck size={14} /> Attendance
+            </TabBtn>}
+            {canUsersManage && (
               <TabBtn active={tab === "users"} onClick={() => setTab("users")} testId="admin-tab-users">
                 <ShieldCheck size={14} /> Users
+              </TabBtn>
+            )}
+            {canUsersManage && (
+              <TabBtn active={tab === "roles"} onClick={() => setTab("roles")} testId="admin-tab-roles">
+                <Lock size={14} /> Roles
               </TabBtn>
             )}
           </div>
         </div>
 
         {loading ? <div className="text-slate-400 py-12 text-center">Loading…</div> : (
-          tab === "tickets" ? (
+          tab === "tickets" && canTicketRead ? (
             <div className="space-y-6">
               <TicketsTable
                 tickets={tickets}
                 categories={categories}
                 adminRole={admin.role}
+                permissions={perms}
                 onView={setTicketDetail}
                 onNew={() => setShowTicketForm(true)}
                 onDelete={deleteTicket}
                 onUpdate={updateTicket}
               />
               {/* Category Manager */}
-              {canWrite && (
+              {canContentWrite && (
                 <div className="rounded-xl border border-white/10 overflow-hidden">
                   <button onClick={() => setShowCategoryPanel(v => !v)}
                     className="w-full flex items-center justify-between px-5 py-3 bg-[#0F172A] hover:bg-white/[0.03] transition-colors">
@@ -338,18 +383,24 @@ export default function AdminDashboard() {
                 </div>
               )}
             </div>
-          ) : tab === "plans" ? (
-            <PlansTable plans={plans} onEdit={(p) => { setEditing(p); setShowForm(true); }} onDelete={deletePlan} onNew={() => { setEditing(null); setShowForm(true); }} />
-          ) : tab === "team" ? (
-            <TeamTable team={team} onEdit={(m) => { setEditingMember(m); setShowMemberForm(true); }} onDelete={deleteMember} onNew={() => { setEditingMember(null); setShowMemberForm(true); }} />
-          ) : tab === "testimonials" ? (
-            <TestimonialsTable items={testimonials} onEdit={(t) => { setEditingT(t); setShowTForm(true); }} onDelete={deleteTestimonial} onNew={() => { setEditingT(null); setShowTForm(true); }} />
-          ) : tab === "partners" ? (
-            <PartnerEnquiriesTable items={partnerEnquiries} onRead={markPartnerRead} onDelete={deletePartner} />
-          ) : tab === "contacts" ? (
-            <ContactsTable contacts={contacts} onRead={markRead} onDelete={deleteContact} />
-          ) : tab === "users" && admin.role === "super_admin" ? (
-            <UsersTable users={users} currentUsername={admin.username} onEdit={(u) => { setEditingUser(u); setShowUserForm(true); }} onDelete={deleteUser} onNew={() => { setEditingUser(null); setShowUserForm(true); }} />
+          ) : tab === "plans" && canContentRead ? (
+            <PlansTable plans={plans} canWrite={canContentWrite} onEdit={(p) => { setEditing(p); setShowForm(true); }} onDelete={deletePlan} onNew={() => { setEditing(null); setShowForm(true); }} />
+          ) : tab === "team" && canContentRead ? (
+            <TeamTable team={team} canWrite={canContentWrite} onEdit={(m) => { setEditingMember(m); setShowMemberForm(true); }} onDelete={deleteMember} onNew={() => { setEditingMember(null); setShowMemberForm(true); }} />
+          ) : tab === "testimonials" && canContentRead ? (
+            <TestimonialsTable items={testimonials} canWrite={canContentWrite} onEdit={(t) => { setEditingT(t); setShowTForm(true); }} onDelete={deleteTestimonial} onNew={() => { setEditingT(null); setShowTForm(true); }} />
+          ) : tab === "partners" && canContentRead ? (
+            <PartnerEnquiriesTable items={partnerEnquiries} canWrite={canContentWrite} onRead={markPartnerRead} onDelete={deletePartner} />
+          ) : tab === "contacts" && canContentRead ? (
+            <ContactsTable contacts={contacts} canWrite={canContentWrite} onRead={markRead} onDelete={deleteContact} />
+          ) : tab === "finance" && canFinance ? (
+            <FinanceTab adminRole={admin.role} permissions={perms} />
+          ) : tab === "attendance" && canAttendanceRead ? (
+            <AttendanceTab canWrite={canAttendanceWrite} />
+          ) : tab === "users" && canUsersManage ? (
+            <UsersTable users={users} currentUsername={admin.username} onEdit={(u) => { setEditingUser(u); setShowUserForm(true); }} onDelete={deleteUser} onNew={() => { setEditingUser(null); setShowUserForm(true); }} roles={roles} />
+          ) : tab === "roles" && canUsersManage ? (
+            <RolesTab roles={roles} onReload={reloadRoles} />
           ) : null
         )}
       </div>
@@ -364,6 +415,7 @@ export default function AdminDashboard() {
           ticket={ticketDetail}
           categories={categories}
           adminRole={admin.role}
+          permissions={perms}
           users={users}
           onUpdate={updateTicket}
           onDelete={deleteTicket}
@@ -375,7 +427,7 @@ export default function AdminDashboard() {
         <CategoryForm initial={editingCategory} onSave={saveCategory} onClose={() => { setShowCategoryForm(false); setEditingCategory(null); }} />
       )}
       {showUserForm && (
-        <UserForm initial={editingUser} onSave={saveUser} onClose={() => { setShowUserForm(false); setEditingUser(null); }} />
+        <UserForm initial={editingUser} onSave={saveUser} onClose={() => { setShowUserForm(false); setEditingUser(null); }} allRoles={roles} />
       )}
     </div>
   );
@@ -404,10 +456,10 @@ const catColor = (categories, slug) => categories.find(c => c.slug === slug)?.co
 const catName  = (categories, slug) => categories.find(c => c.slug === slug)?.name  || slug;
 
 // ─── Tickets ──────────────────────────────────────────────────────────────────
-function TicketsTable({ tickets, categories, adminRole, onView, onNew, onDelete, onUpdate }) {
+function TicketsTable({ tickets, categories, adminRole, permissions = [], onView, onNew, onDelete, onUpdate }) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
-  const canWrite = adminRole === "super_admin" || adminRole === "admin";
+  const canWrite = permissions.includes("tickets_write") || adminRole === "super_admin";
 
   const filtered = tickets.filter(t =>
     (statusFilter === "all" || t.status === statusFilter) &&
@@ -502,11 +554,11 @@ function TicketsTable({ tickets, categories, adminRole, onView, onNew, onDelete,
   );
 }
 
-function TicketDetailModal({ ticket, categories, adminRole, users, onUpdate, onDelete, onAddNote, onClose }) {
+function TicketDetailModal({ ticket, categories, adminRole, permissions = [], users, onUpdate, onDelete, onAddNote, onClose }) {
   const [noteText, setNoteText] = useState("");
   const [savingNote, setSavingNote] = useState(false);
   const [localAssigned, setLocalAssigned] = useState(ticket.assigned_to || "");
-  const canWrite = adminRole === "super_admin" || adminRole === "admin";
+  const canWrite = permissions.includes("tickets_write") || adminRole === "super_admin";
   const sm = STATUS_META[ticket.status] || STATUS_META.open;
   const color = catColor(categories, ticket.category);
 
@@ -782,7 +834,7 @@ function CategoryForm({ initial, onSave, onClose }) {
 }
 
 // ─── Users ────────────────────────────────────────────────────────────────────
-function UsersTable({ users, currentUsername, onEdit, onDelete, onNew }) {
+function UsersTable({ users, currentUsername, onEdit, onDelete, onNew, roles = [] }) {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
@@ -827,7 +879,7 @@ function UsersTable({ users, currentUsername, onEdit, onDelete, onNew }) {
   );
 }
 
-function UserForm({ initial, onSave, onClose }) {
+function UserForm({ initial, onSave, onClose, allRoles = [] }) {
   const isEdit = !!initial;
   const [form, setForm] = useState(isEdit
     ? { recovery_email: initial.recovery_email || "", role: initial.role || "support", password: "" }
@@ -840,6 +892,15 @@ function UserForm({ initial, onSave, onClose }) {
       : form;
     onSave(payload);
   };
+
+  // System roles always shown; custom roles from DB appended
+  const systemRoles = [
+    { value: "super_admin", label: "Super Admin — full access + user management" },
+    { value: "admin",       label: "Admin — manage content & tickets" },
+    { value: "support",     label: "Support — manage tickets only" },
+  ];
+  const customRoles = allRoles.filter(r => !r.is_system).map(r => ({ value: r.name, label: `${r.label} (custom)` }));
+
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm grid place-items-center p-4">
       <div className="w-full max-w-lg hn-card rounded-2xl p-8">
@@ -851,9 +912,13 @@ function UserForm({ initial, onSave, onClose }) {
           {!isEdit && <FormField label="Username"><input required value={form.username} onChange={upd("username")} className={inputCls} placeholder="e.g. support1" autoComplete="off" /></FormField>}
           <FormField label="Role">
             <select value={form.role} onChange={upd("role")} className={inputCls}>
-              <option value="super_admin">Super Admin — full access + user management</option>
-              <option value="admin">Admin — manage content &amp; tickets</option>
-              <option value="support">Support — manage tickets only</option>
+              {systemRoles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+              {customRoles.length > 0 && (
+                <>
+                  <option disabled>── Custom Roles ──</option>
+                  {customRoles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                </>
+              )}
             </select>
           </FormField>
           <FormField label="Recovery Email">
@@ -882,11 +947,11 @@ const InfoItem = ({ label, value, bold, mono, accent }) => (
 );
 
 // ─── Existing unchanged components ────────────────────────────────────────────
-function PlansTable({ plans, onEdit, onDelete, onNew }) {
+function PlansTable({ plans, canWrite, onEdit, onDelete, onNew }) {
   return (
     <div>
       <div className="mb-4 flex justify-end">
-        <button onClick={onNew} data-testid="admin-new-plan-btn" className="hn-btn-primary inline-flex items-center gap-2 text-sm !py-2"><Plus size={14} /> New Plan</button>
+        {canWrite && <button onClick={onNew} data-testid="admin-new-plan-btn" className="hn-btn-primary inline-flex items-center gap-2 text-sm !py-2"><Plus size={14} /> New Plan</button>}
       </div>
       <div className="rounded-xl border border-white/10 overflow-hidden">
         <table className="w-full text-sm" data-testid="admin-plans-table">
@@ -903,11 +968,13 @@ function PlansTable({ plans, onEdit, onDelete, onNew }) {
                 <Td className="text-slate-400 text-xs">{p.validity_label}</Td>
                 <Td>{p.popular ? <span className="text-[#F26B21]">★</span> : <span className="text-slate-600">–</span>}</Td>
                 <Td>{p.active ? <span className="text-emerald-400">●</span> : <span className="text-slate-600">●</span>}</Td>
-                <Td>
+                  <Td>
+                    {canWrite && (
                   <div className="flex items-center gap-2">
                     <button onClick={() => onEdit(p)} data-testid={`admin-edit-${p.id}`} className="p-2 rounded-md hover:bg-white/5 text-slate-300"><Edit3 size={14} /></button>
                     <button onClick={() => onDelete(p.id)} data-testid={`admin-delete-${p.id}`} className="p-2 rounded-md hover:bg-red-500/10 text-red-400"><Trash2 size={14} /></button>
                   </div>
+                    )}
                 </Td>
               </tr>
             ))}
@@ -918,7 +985,7 @@ function PlansTable({ plans, onEdit, onDelete, onNew }) {
   );
 }
 
-function ContactsTable({ contacts, onRead, onDelete }) {
+function ContactsTable({ contacts, canWrite, onRead, onDelete }) {
   if (contacts.length === 0) return <div className="text-slate-400 py-12 text-center">No enquiries yet.</div>;
   return (
     <div className="space-y-3" data-testid="admin-contacts-list">
@@ -935,8 +1002,8 @@ function ContactsTable({ contacts, onRead, onDelete }) {
               <div className="text-slate-400 text-sm mt-3 whitespace-pre-line leading-relaxed">{c.message}</div>
             </div>
             <div className="flex items-center gap-2">
-              {!c.read && <button onClick={() => onRead(c.id)} className="p-2 rounded-md hover:bg-white/5 text-emerald-400"><CheckCircle2 size={16} /></button>}
-              <button onClick={() => onDelete(c.id)} className="p-2 rounded-md hover:bg-red-500/10 text-red-400"><Trash2 size={16} /></button>
+              {canWrite && !c.read && <button onClick={() => onRead(c.id)} className="p-2 rounded-md hover:bg-white/5 text-emerald-400"><CheckCircle2 size={16} /></button>}
+              {canWrite && <button onClick={() => onDelete(c.id)} className="p-2 rounded-md hover:bg-red-500/10 text-red-400"><Trash2 size={16} /></button>}
             </div>
           </div>
         </div>
@@ -945,7 +1012,7 @@ function ContactsTable({ contacts, onRead, onDelete }) {
   );
 }
 
-function PartnerEnquiriesTable({ items, onRead, onDelete }) {
+function PartnerEnquiriesTable({ items, canWrite, onRead, onDelete }) {
   if (items.length === 0) return <div className="text-slate-400 py-12 text-center">No partner enquiries yet.</div>;
   return (
     <div className="space-y-3">
@@ -963,8 +1030,8 @@ function PartnerEnquiriesTable({ items, onRead, onDelete }) {
               <div className="text-slate-400 text-sm mt-3 whitespace-pre-line leading-relaxed">{p.message}</div>
             </div>
             <div className="flex items-center gap-2">
-              {!p.read && <button onClick={() => onRead(p.id)} className="p-2 rounded-md hover:bg-white/5 text-emerald-400"><CheckCircle2 size={16} /></button>}
-              <button onClick={() => onDelete(p.id)} className="p-2 rounded-md hover:bg-red-500/10 text-red-400"><Trash2 size={16} /></button>
+              {canWrite && !p.read && <button onClick={() => onRead(p.id)} className="p-2 rounded-md hover:bg-white/5 text-emerald-400"><CheckCircle2 size={16} /></button>}
+              {canWrite && <button onClick={() => onDelete(p.id)} className="p-2 rounded-md hover:bg-red-500/10 text-red-400"><Trash2 size={16} /></button>}
             </div>
           </div>
         </div>
@@ -973,11 +1040,11 @@ function PartnerEnquiriesTable({ items, onRead, onDelete }) {
   );
 }
 
-function TeamTable({ team, onEdit, onDelete, onNew }) {
+function TeamTable({ team, canWrite, onEdit, onDelete, onNew }) {
   return (
     <div>
       <div className="mb-4 flex justify-end">
-        <button onClick={onNew} className="hn-btn-primary inline-flex items-center gap-2 text-sm !py-2"><Plus size={14} /> New Member</button>
+        {canWrite && <button onClick={onNew} className="hn-btn-primary inline-flex items-center gap-2 text-sm !py-2"><Plus size={14} /> New Member</button>}
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {team.map(m => (
@@ -988,10 +1055,10 @@ function TeamTable({ team, onEdit, onDelete, onNew }) {
               <div className="text-xs uppercase tracking-widest font-mono-metric text-[#F26B21] mt-0.5">{m.role}</div>
               <div className="mt-1 text-xs text-slate-500">Order: {m.display_order} · {m.active ? <span className="text-emerald-400">Active</span> : <span className="text-slate-500">Hidden</span>}</div>
             </div>
-            <div className="flex flex-col gap-1">
+            {canWrite && <div className="flex flex-col gap-1">
               <button onClick={() => onEdit(m)} className="p-2 rounded-md hover:bg-white/5 text-slate-300"><Edit3 size={14} /></button>
               <button onClick={() => onDelete(m.id)} className="p-2 rounded-md hover:bg-red-500/10 text-red-400"><Trash2 size={14} /></button>
-            </div>
+            </div>}
           </div>
         ))}
       </div>
@@ -999,11 +1066,11 @@ function TeamTable({ team, onEdit, onDelete, onNew }) {
   );
 }
 
-function TestimonialsTable({ items, onEdit, onDelete, onNew }) {
+function TestimonialsTable({ items, canWrite, onEdit, onDelete, onNew }) {
   return (
     <div>
       <div className="mb-4 flex justify-end">
-        <button onClick={onNew} className="hn-btn-primary inline-flex items-center gap-2 text-sm !py-2"><Plus size={14} /> New Testimonial</button>
+        {canWrite && <button onClick={onNew} className="hn-btn-primary inline-flex items-center gap-2 text-sm !py-2"><Plus size={14} /> New Testimonial</button>}
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {items.map(t => (
@@ -1018,10 +1085,10 @@ function TestimonialsTable({ items, onEdit, onDelete, onNew }) {
               <div className="text-slate-400 text-sm mt-2 line-clamp-2">"{t.quote}"</div>
               <div className="mt-2 text-xs text-slate-500">Order: {t.display_order} · {t.active ? <span className="text-emerald-400">Active</span> : <span className="text-slate-500">Hidden</span>}</div>
             </div>
-            <div className="flex flex-col gap-1">
+            {canWrite && <div className="flex flex-col gap-1">
               <button onClick={() => onEdit(t)} className="p-2 rounded-md hover:bg-white/5 text-slate-300"><Edit3 size={14} /></button>
               <button onClick={() => onDelete(t.id)} className="p-2 rounded-md hover:bg-red-500/10 text-red-400"><Trash2 size={14} /></button>
-            </div>
+            </div>}
           </div>
         ))}
       </div>

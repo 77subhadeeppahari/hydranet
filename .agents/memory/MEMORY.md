@@ -1,0 +1,2 @@
+- [Permission system](permission-system.md) — all admin routes now use _require_perm(); _require_write_role() maps to content_write; SYSTEM_ROLES dict is authoritative source of truth
+- [New feature tabs](new-feature-tabs.md) — Finance, Attendance, Roles tabs added; each is a separate file imported into AdminDashboard.jsx

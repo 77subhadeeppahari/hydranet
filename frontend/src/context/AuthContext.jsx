@@ -12,7 +12,7 @@ export const AuthProvider = ({ children }) => {
     if (!token) { setLoading(false); return; }
     // Always fetch /auth/me on load — it returns the authoritative role from DB
     api.get("/auth/me")
-      .then(({ data }) => setAdmin({ username: data.username, recovery_email: data.recovery_email, role: data.role || "admin" }))
+      .then(({ data }) => setAdmin({ username: data.username, recovery_email: data.recovery_email, role: data.role || "admin", permissions: data.permissions || [] }))
       .catch(() => { localStorage.removeItem("hn_token"); setAdmin(null); })
       .finally(() => setLoading(false));
   }, []);
@@ -20,8 +20,7 @@ export const AuthProvider = ({ children }) => {
   const login = async (username, password) => {
     const { data } = await api.post("/auth/login", { username, password });
     localStorage.setItem("hn_token", data.access_token);
-    // Use role from login response directly — no extra round-trip needed
-    setAdmin({ username: data.username, recovery_email: data.recovery_email, role: data.role || "admin" });
+    setAdmin({ username: data.username, recovery_email: data.recovery_email, role: data.role || "admin", permissions: data.permissions || [] });
     return data;
   };
 

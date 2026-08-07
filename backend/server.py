@@ -109,11 +109,23 @@ async def get_current_admin(credentials: Optional[HTTPAuthorizationCredentials] 
         if not admin:
             raise HTTPException(status_code=401, detail="Admin not found")
         admin["_id"] = str(admin["_id"])
+        # Attach permissions from role
+        role_name = admin.get("role", "admin")
+        if role_name in SYSTEM_ROLES:
+            admin["permissions"] = SYSTEM_ROLES[role_name]["permissions"]
+        else:
+            role_doc = await db.admin_roles.find_one({"name": role_name})
+            admin["permissions"] = role_doc["permissions"] if role_doc else []
         return admin
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+def _require_perm(current: dict, perm: str) -> None:
+    """Raises 403 if the caller lacks the specified permission."""
+    if perm not in current.get("permissions", []):
+        raise HTTPException(status_code=403, detail=f"Missing permission: {perm}")
 
 # ---------------- Models ----------------
 class LoginRequest(BaseModel):
@@ -383,6 +395,150 @@ class AdminUserUpdate(BaseModel):
     role: Optional[str] = None
     password: Optional[str] = None
 
+# ---------------- Models: Custom Roles ----------------
+ALL_PERMISSIONS = [
+    "tickets_read", "tickets_write",
+    "content_read", "content_write",
+    "finance_read", "finance_write",
+    "attendance_read", "attendance_write",
+    "users_manage",
+]
+
+SYSTEM_ROLES = {
+    "super_admin": {
+        "label": "Super Admin",
+        "description": "Full access including user and role management",
+        "permissions": ["tickets_read", "tickets_write", "content_read", "content_write", "finance_read", "finance_write", "attendance_read", "attendance_write", "users_manage"],
+        "is_system": True,
+    },
+    "admin": {
+        "label": "Admin",
+        "description": "Manage content, tickets, finances and attendance",
+        "permissions": ["tickets_read", "tickets_write", "content_read", "content_write", "finance_read", "finance_write", "attendance_read", "attendance_write"],
+        "is_system": True,
+    },
+    "support": {
+        "label": "Support",
+        "description": "Manage tickets and view attendance",
+        "permissions": ["tickets_read", "tickets_write", "content_read", "attendance_read"],
+        "is_system": True,
+    },
+}
+
+class AdminRole(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    label: str
+    description: str = ""
+    permissions: List[str] = []
+    is_system: bool = False
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class AdminRoleCreate(BaseModel):
+    name: str
+    label: str
+    description: str = ""
+    permissions: List[str] = []
+
+class AdminRoleUpdate(BaseModel):
+    label: Optional[str] = None
+    description: Optional[str] = None
+    permissions: Optional[List[str]] = None
+
+# ---------------- Models: Expenses ----------------
+EXPENSE_CATEGORIES = ["salary", "infrastructure", "marketing", "equipment", "utilities", "rent", "maintenance", "other"]
+PAYMENT_MODES = ["cash", "bank_transfer", "upi", "cheque", "card"]
+
+class Expense(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    amount: float
+    category: str
+    description: str
+    date: str  # YYYY-MM-DD
+    payment_mode: str = "cash"
+    reference: str = ""
+    added_by: str = ""
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class ExpenseCreate(BaseModel):
+    amount: float
+    category: str
+    description: str
+    date: str
+    payment_mode: str = "cash"
+    reference: str = ""
+
+class ExpenseUpdate(BaseModel):
+    amount: Optional[float] = None
+    category: Optional[str] = None
+    description: Optional[str] = None
+    date: Optional[str] = None
+    payment_mode: Optional[str] = None
+    reference: Optional[str] = None
+
+# ---------------- Models: Staff & Attendance ----------------
+class StaffMember(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    employee_id: str = ""
+    department: str = "Operations"
+    designation: str = ""
+    phone: str = ""
+    email: str = ""
+    join_date: str = ""
+    active: bool = True
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class StaffCreate(BaseModel):
+    name: str
+    employee_id: str = ""
+    department: str = "Operations"
+    designation: str = ""
+    phone: str = ""
+    email: str = ""
+    join_date: str = ""
+    active: bool = True
+
+class StaffUpdate(BaseModel):
+    name: Optional[str] = None
+    employee_id: Optional[str] = None
+    department: Optional[str] = None
+    designation: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    join_date: Optional[str] = None
+    active: Optional[bool] = None
+
+ATTENDANCE_STATUSES = {"present", "absent", "half_day", "on_leave", "holiday"}
+
+class AttendanceRecord(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    staff_id: str
+    date: str  # YYYY-MM-DD
+    status: str = "present"
+    check_in: str = ""
+    check_out: str = ""
+    notes: str = ""
+    marked_by: str = ""
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class AttendanceCreate(BaseModel):
+    staff_id: str
+    date: str
+    status: str = "present"
+    check_in: str = ""
+    check_out: str = ""
+    notes: str = ""
+
+class AttendanceUpdate(BaseModel):
+    status: Optional[str] = None
+    check_in: Optional[str] = None
+    check_out: Optional[str] = None
+    notes: Optional[str] = None
+
 # ---------------- Seed data ----------------
 SEED_PLANS = [
     # Monthly
@@ -595,17 +751,29 @@ async def admin_login(payload: LoginRequest):
     if not admin or not verify_password(payload.password, admin.get("password_hash", "")):
         raise HTTPException(status_code=401, detail="Invalid username or password")
     token = create_access_token(admin["username"])
+    role_name = admin.get("role", "admin")
+    if role_name in SYSTEM_ROLES:
+        permissions = SYSTEM_ROLES[role_name]["permissions"]
+    else:
+        role_doc = await db.admin_roles.find_one({"name": role_name})
+        permissions = role_doc["permissions"] if role_doc else []
     return {
         "access_token": token,
         "token_type": "bearer",
         "username": admin["username"],
         "recovery_email": admin.get("recovery_email"),
-        "role": admin.get("role", "admin"),
+        "role": role_name,
+        "permissions": permissions,
     }
 
 @api_router.get("/auth/me")
 async def me(current: dict = Depends(get_current_admin)):
-    return {"username": current["username"], "recovery_email": current.get("recovery_email"), "role": current.get("role", "admin")}
+    return {
+        "username": current["username"],
+        "recovery_email": current.get("recovery_email"),
+        "role": current.get("role", "admin"),
+        "permissions": current.get("permissions", []),
+    }
 
 def _mask_email(email: str) -> str:
     try:
@@ -688,6 +856,7 @@ async def reset_password(payload: ResetPasswordRequest):
 # ---------------- Routes: Admin Plans ----------------
 @api_router.get("/admin/plans", response_model=List[Plan])
 async def admin_list_plans(current: dict = Depends(get_current_admin)):
+    _require_perm(current, "content_read")
     docs = await db.plans.find({}, {"_id": 0}).sort([("category", 1), ("display_order", 1)]).to_list(500)
     for d in docs:
         if isinstance(d.get("created_at"), str):
@@ -734,6 +903,7 @@ async def admin_delete_plan(plan_id: str, current: dict = Depends(get_current_ad
 # ---------------- Routes: Admin Contacts ----------------
 @api_router.get("/admin/contacts", response_model=List[ContactSubmission])
 async def admin_list_contacts(current: dict = Depends(get_current_admin)):
+    _require_perm(current, "content_read")
     docs = await db.contacts.find({}, {"_id": 0}).sort([("created_at", -1)]).to_list(1000)
     for d in docs:
         if isinstance(d.get("created_at"), str):
@@ -745,6 +915,7 @@ async def admin_list_contacts(current: dict = Depends(get_current_admin)):
 
 @api_router.patch("/admin/contacts/{contact_id}/read")
 async def admin_mark_contact_read(contact_id: str, current: dict = Depends(get_current_admin)):
+    _require_perm(current, "content_write")
     result = await db.contacts.update_one({"id": contact_id}, {"$set": {"read": True}})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Contact not found")
@@ -761,6 +932,7 @@ async def admin_delete_contact(contact_id: str, current: dict = Depends(get_curr
 # ---------------- Routes: Admin Team ----------------
 @api_router.get("/admin/team", response_model=List[TeamMember])
 async def admin_list_team(current: dict = Depends(get_current_admin)):
+    _require_perm(current, "content_read")
     docs = await db.team_members.find({}, {"_id": 0}).sort([("display_order", 1)]).to_list(200)
     for d in docs:
         if isinstance(d.get("created_at"), str):
@@ -807,6 +979,7 @@ async def admin_delete_team(member_id: str, current: dict = Depends(get_current_
 # ---------------- Routes: Admin Testimonials ----------------
 @api_router.get("/admin/testimonials", response_model=List[Testimonial])
 async def admin_list_testimonials(current: dict = Depends(get_current_admin)):
+    _require_perm(current, "content_read")
     docs = await db.testimonials.find({}, {"_id": 0}).sort([("display_order", 1)]).to_list(200)
     for d in docs:
         if isinstance(d.get("created_at"), str):
@@ -878,6 +1051,7 @@ async def create_partner_enquiry(payload: PartnerEnquiryCreate):
 
 @api_router.get("/admin/partner-enquiries", response_model=List[PartnerEnquiry])
 async def admin_list_partner_enquiries(current: dict = Depends(get_current_admin)):
+    _require_perm(current, "content_read")
     docs = await db.partner_enquiries.find({}, {"_id": 0}).sort([("created_at", -1)]).to_list(1000)
     for d in docs:
         if isinstance(d.get("created_at"), str):
@@ -889,6 +1063,7 @@ async def admin_list_partner_enquiries(current: dict = Depends(get_current_admin
 
 @api_router.patch("/admin/partner-enquiries/{p_id}/read")
 async def admin_mark_partner_read(p_id: str, current: dict = Depends(get_current_admin)):
+    _require_perm(current, "content_write")
     result = await db.partner_enquiries.update_one({"id": p_id}, {"$set": {"read": True}})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Not found")
@@ -915,9 +1090,10 @@ async def next_ticket_number() -> str:
     return f"TKT-{seq:04d}"
 
 def _require_write_role(current: dict) -> None:
-    """Raises 403 if the caller is support-only (tickets only)."""
-    if current.get("role") == "support":
-        raise HTTPException(status_code=403, detail="Support role cannot modify this resource")
+    """Raises 403 if the caller lacks content_write permission.
+    Checks the permission list (works for both system and custom roles)."""
+    if "content_write" not in current.get("permissions", []):
+        raise HTTPException(status_code=403, detail="Insufficient permissions to modify this resource")
 
 def _parse_ticket_doc(d: dict) -> dict:
     for field in ("created_at", "updated_at"):
@@ -941,6 +1117,7 @@ async def public_list_categories():
 
 @api_router.get("/admin/ticket-categories")
 async def admin_list_categories(current: dict = Depends(get_current_admin)):
+    _require_perm(current, "tickets_read")
     docs = await db.ticket_categories.find({}, {"_id": 0}).sort("display_order", 1).to_list(100)
     return docs
 
@@ -997,6 +1174,7 @@ async def admin_list_tickets(
     priority: Optional[str] = None,
     current: dict = Depends(get_current_admin),
 ):
+    _require_perm(current, "tickets_read")
     query: dict = {}
     if status: query["status"] = status
     if priority: query["priority"] = priority
@@ -1005,8 +1183,7 @@ async def admin_list_tickets(
 
 @api_router.post("/admin/tickets", response_model=Ticket)
 async def admin_create_ticket(payload: TicketCreate, current: dict = Depends(get_current_admin)):
-    if current.get("role") not in ("super_admin", "admin"):
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    _require_perm(current, "tickets_write")
     if payload.priority not in VALID_PRIORITIES:
         raise HTTPException(status_code=400, detail="Invalid priority")
     ticket_number = await next_ticket_number()
@@ -1021,6 +1198,7 @@ async def admin_create_ticket(payload: TicketCreate, current: dict = Depends(get
 
 @api_router.patch("/admin/tickets/{ticket_id}", response_model=Ticket)
 async def admin_update_ticket(ticket_id: str, payload: TicketUpdate, current: dict = Depends(get_current_admin)):
+    _require_perm(current, "tickets_write")
     updates = {k: v for k, v in payload.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
@@ -1040,8 +1218,7 @@ async def admin_update_ticket(ticket_id: str, payload: TicketUpdate, current: di
 
 @api_router.delete("/admin/tickets/{ticket_id}")
 async def admin_delete_ticket(ticket_id: str, current: dict = Depends(get_current_admin)):
-    if current.get("role") not in ("super_admin", "admin"):
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    _require_perm(current, "tickets_write")
     result = await db.tickets.delete_one({"id": ticket_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Ticket not found")
@@ -1049,6 +1226,7 @@ async def admin_delete_ticket(ticket_id: str, current: dict = Depends(get_curren
 
 @api_router.post("/admin/tickets/{ticket_id}/notes")
 async def admin_add_ticket_note(ticket_id: str, payload: TicketNoteCreate, current: dict = Depends(get_current_admin)):
+    _require_perm(current, "tickets_write")
     note = TicketNote(content=payload.content, created_by=current["username"])
     note_doc = note.model_dump()
     note_doc["created_at"] = note_doc["created_at"].isoformat()
@@ -1060,20 +1238,306 @@ async def admin_add_ticket_note(ticket_id: str, payload: TicketNoteCreate, curre
         raise HTTPException(status_code=404, detail="Ticket not found")
     return {"message": "Note added", "note": note}
 
+# ---------------- Routes: Custom Roles ----------------
+@api_router.get("/admin/roles")
+async def admin_list_roles(current: dict = Depends(get_current_admin)):
+    if "users_manage" not in current.get("permissions", []):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    system = [
+        {"id": f"sys_{k}", "name": k, "is_system": True, "created_at": None, **v}
+        for k, v in SYSTEM_ROLES.items()
+    ]
+    custom = await db.admin_roles.find({}, {"_id": 0}).to_list(100)
+    return system + custom
+
+@api_router.post("/admin/roles")
+async def admin_create_role(payload: AdminRoleCreate, current: dict = Depends(get_current_admin)):
+    if "users_manage" not in current.get("permissions", []):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    if payload.name in SYSTEM_ROLES:
+        raise HTTPException(status_code=400, detail="Name conflicts with a system role")
+    existing = await db.admin_roles.find_one({"name": payload.name})
+    if existing:
+        raise HTTPException(status_code=400, detail="Role name already exists")
+    invalid = [p for p in payload.permissions if p not in ALL_PERMISSIONS]
+    if invalid:
+        raise HTTPException(status_code=400, detail=f"Invalid permissions: {invalid}")
+    role = AdminRole(**payload.model_dump())
+    doc = role.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    await db.admin_roles.insert_one(doc)
+    return doc
+
+@api_router.patch("/admin/roles/{role_id}")
+async def admin_update_role(role_id: str, payload: AdminRoleUpdate, current: dict = Depends(get_current_admin)):
+    if "users_manage" not in current.get("permissions", []):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    if "permissions" in updates:
+        invalid = [p for p in updates["permissions"] if p not in ALL_PERMISSIONS]
+        if invalid:
+            raise HTTPException(status_code=400, detail=f"Invalid permissions: {invalid}")
+    result = await db.admin_roles.update_one({"id": role_id}, {"$set": updates})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Role not found")
+    return await db.admin_roles.find_one({"id": role_id}, {"_id": 0})
+
+@api_router.delete("/admin/roles/{role_id}")
+async def admin_delete_role(role_id: str, current: dict = Depends(get_current_admin)):
+    if "users_manage" not in current.get("permissions", []):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    doc = await db.admin_roles.find_one({"id": role_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Role not found")
+    users_with_role = await db.admins.count_documents({"role": doc["name"]})
+    if users_with_role > 0:
+        raise HTTPException(status_code=400, detail=f"Cannot delete: {users_with_role} user(s) assigned to this role")
+    await db.admin_roles.delete_one({"id": role_id})
+    return {"message": "Deleted"}
+
+# ---------------- Routes: Expenses ----------------
+@api_router.get("/admin/expenses/report")
+async def admin_expense_report(
+    period: str = "monthly",
+    year: int = 2026,
+    month: Optional[int] = None,
+    current: dict = Depends(get_current_admin),
+):
+    _require_perm(current, "finance_read")
+    if period == "monthly":
+        if not month:
+            raise HTTPException(status_code=400, detail="month is required for monthly report")
+        query = {"date": {"$regex": f"^{year:04d}-{month:02d}"}}
+    else:
+        query = {"date": {"$regex": f"^{year:04d}"}}
+    docs = await db.expenses.find(query, {"_id": 0}).sort("date", 1).to_list(10000)
+    by_category: dict = {}
+    by_month: dict = {}
+    for d in docs:
+        by_category[d["category"]] = by_category.get(d["category"], 0) + d["amount"]
+        m_key = d["date"][:7]
+        by_month[m_key] = by_month.get(m_key, 0) + d["amount"]
+    return {
+        "period": period, "year": year, "month": month,
+        "expenses": docs,
+        "total": sum(d["amount"] for d in docs),
+        "by_category": by_category,
+        "by_month": by_month,
+    }
+
+@api_router.get("/admin/expenses")
+async def admin_list_expenses(
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    category: Optional[str] = None,
+    current: dict = Depends(get_current_admin),
+):
+    _require_perm(current, "finance_read")
+    query: dict = {}
+    if year and month:
+        query["date"] = {"$regex": f"^{year:04d}-{month:02d}"}
+    elif year:
+        query["date"] = {"$regex": f"^{year:04d}"}
+    if category:
+        query["category"] = category
+    docs = await db.expenses.find(query, {"_id": 0}).sort("date", -1).to_list(10000)
+    return docs
+
+@api_router.post("/admin/expenses")
+async def admin_create_expense(payload: ExpenseCreate, current: dict = Depends(get_current_admin)):
+    _require_perm(current, "finance_write")
+    if payload.category not in EXPENSE_CATEGORIES:
+        raise HTTPException(status_code=400, detail="Invalid category")
+    expense = Expense(**payload.model_dump(), added_by=current["username"])
+    doc = expense.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    await db.expenses.insert_one(doc)
+    return doc
+
+@api_router.patch("/admin/expenses/{expense_id}")
+async def admin_update_expense(expense_id: str, payload: ExpenseUpdate, current: dict = Depends(get_current_admin)):
+    _require_perm(current, "finance_write")
+    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    result = await db.expenses.update_one({"id": expense_id}, {"$set": updates})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    return await db.expenses.find_one({"id": expense_id}, {"_id": 0})
+
+@api_router.delete("/admin/expenses/{expense_id}")
+async def admin_delete_expense(expense_id: str, current: dict = Depends(get_current_admin)):
+    _require_perm(current, "finance_write")
+    result = await db.expenses.delete_one({"id": expense_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    return {"message": "Deleted"}
+
+# ---------------- Routes: Staff ----------------
+@api_router.get("/admin/staff")
+async def admin_list_staff(current: dict = Depends(get_current_admin)):
+    _require_perm(current, "attendance_read")
+    docs = await db.staff.find({}, {"_id": 0}).sort("name", 1).to_list(500)
+    for d in docs:
+        if isinstance(d.get("created_at"), str):
+            try: d["created_at"] = datetime.fromisoformat(d["created_at"])
+            except: d["created_at"] = datetime.now(timezone.utc)
+    return docs
+
+@api_router.post("/admin/staff")
+async def admin_create_staff(payload: StaffCreate, current: dict = Depends(get_current_admin)):
+    _require_perm(current, "attendance_write")
+    member = StaffMember(**payload.model_dump())
+    doc = member.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    await db.staff.insert_one(doc)
+    return doc
+
+@api_router.patch("/admin/staff/{staff_id}")
+async def admin_update_staff(staff_id: str, payload: StaffUpdate, current: dict = Depends(get_current_admin)):
+    _require_perm(current, "attendance_write")
+    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    result = await db.staff.update_one({"id": staff_id}, {"$set": updates})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Staff not found")
+    return await db.staff.find_one({"id": staff_id}, {"_id": 0})
+
+@api_router.delete("/admin/staff/{staff_id}")
+async def admin_delete_staff(staff_id: str, current: dict = Depends(get_current_admin)):
+    _require_perm(current, "attendance_write")
+    result = await db.staff.delete_one({"id": staff_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Staff not found")
+    return {"message": "Deleted"}
+
+# ---------------- Routes: Attendance ----------------
+@api_router.get("/admin/attendance/report")
+async def admin_attendance_report(
+    period: str = "monthly",
+    year: int = 2026,
+    month: Optional[int] = None,
+    current: dict = Depends(get_current_admin),
+):
+    _require_perm(current, "attendance_read")
+    if period == "monthly":
+        if not month:
+            raise HTTPException(status_code=400, detail="month required for monthly report")
+        query = {"date": {"$regex": f"^{year:04d}-{month:02d}"}}
+    else:
+        query = {"date": {"$regex": f"^{year:04d}"}}
+    records = await db.attendance.find(query, {"_id": 0}).sort("date", 1).to_list(50000)
+    staff_list = await db.staff.find({"active": True}, {"_id": 0}).sort("name", 1).to_list(500)
+
+    total_present  = sum(1 for r in records if r["status"] == "present")
+    total_absent   = sum(1 for r in records if r["status"] == "absent")
+    total_half     = sum(1 for r in records if r["status"] == "half_day")
+    total_leave    = sum(1 for r in records if r["status"] == "on_leave")
+
+    # working days = unique dates with at least one record (excluding holidays)
+    working_dates = {r["date"] for r in records if r["status"] != "holiday"}
+    working_days = len(working_dates)
+    total_staff = len(staff_list)
+    avg_pct = round((total_present + total_half * 0.5) / max(len(records), 1) * 100, 1)
+
+    return {
+        "period": period, "year": year, "month": month,
+        "staff_list": staff_list,
+        "records": records,
+        "summary": {
+            "total_staff": total_staff,
+            "working_days": working_days,
+            "avg_attendance": avg_pct,
+            "total_present": total_present,
+            "total_absent": total_absent,
+            "total_half_day": total_half,
+            "total_leave": total_leave,
+        },
+    }
+
+@api_router.get("/admin/attendance")
+async def admin_list_attendance(
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    staff_id: Optional[str] = None,
+    status: Optional[str] = None,
+    current: dict = Depends(get_current_admin),
+):
+    _require_perm(current, "attendance_read")
+    query: dict = {}
+    if year and month:
+        query["date"] = {"$regex": f"^{year:04d}-{month:02d}"}
+    elif year:
+        query["date"] = {"$regex": f"^{year:04d}"}
+    if staff_id:
+        query["staff_id"] = staff_id
+    if status:
+        query["status"] = status
+    docs = await db.attendance.find(query, {"_id": 0}).sort("date", -1).to_list(10000)
+    for d in docs:
+        if isinstance(d.get("created_at"), str):
+            try: d["created_at"] = datetime.fromisoformat(d["created_at"])
+            except: d["created_at"] = datetime.now(timezone.utc)
+    return docs
+
+@api_router.post("/admin/attendance")
+async def admin_create_attendance(payload: AttendanceCreate, current: dict = Depends(get_current_admin)):
+    _require_perm(current, "attendance_write")
+    if payload.status not in ATTENDANCE_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    # Check for duplicate (same staff + date)
+    existing = await db.attendance.find_one({"staff_id": payload.staff_id, "date": payload.date})
+    if existing:
+        raise HTTPException(status_code=400, detail="Attendance already logged for this staff on this date")
+    record = AttendanceRecord(**payload.model_dump(), marked_by=current["username"])
+    doc = record.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    await db.attendance.insert_one(doc)
+    return doc
+
+@api_router.patch("/admin/attendance/{record_id}")
+async def admin_update_attendance(record_id: str, payload: AttendanceUpdate, current: dict = Depends(get_current_admin)):
+    _require_perm(current, "attendance_write")
+    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    if "status" in updates and updates["status"] not in ATTENDANCE_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    result = await db.attendance.update_one({"id": record_id}, {"$set": updates})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Record not found")
+    return await db.attendance.find_one({"id": record_id}, {"_id": 0})
+
+@api_router.delete("/admin/attendance/{record_id}")
+async def admin_delete_attendance(record_id: str, current: dict = Depends(get_current_admin)):
+    _require_perm(current, "attendance_write")
+    result = await db.attendance.delete_one({"id": record_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Record not found")
+    return {"message": "Deleted"}
+
 # ---------------- Routes: Admin User Management ----------------
 @api_router.get("/admin/users")
 async def admin_list_users(current: dict = Depends(get_current_admin)):
-    if current.get("role") != "super_admin":
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    _require_perm(current, "users_manage")
     docs = await db.admins.find({}, {"_id": 0, "password_hash": 0}).sort("created_at", 1).to_list(200)
     return docs
 
+async def _validate_role_name(role: str) -> None:
+    """Accept system roles or custom roles stored in admin_roles collection."""
+    if role in VALID_ROLES:
+        return
+    custom = await db.admin_roles.find_one({"name": role})
+    if not custom:
+        raise HTTPException(status_code=400, detail=f"Invalid role '{role}'")
+
 @api_router.post("/admin/users")
 async def admin_create_user(payload: AdminUserCreate, current: dict = Depends(get_current_admin)):
-    if current.get("role") != "super_admin":
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
-    if payload.role not in VALID_ROLES:
-        raise HTTPException(status_code=400, detail="Invalid role")
+    _require_perm(current, "users_manage")
+    await _validate_role_name(payload.role)
     if len(payload.password) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
     existing = await db.admins.find_one({"username": payload.username})
@@ -1091,16 +1555,14 @@ async def admin_create_user(payload: AdminUserCreate, current: dict = Depends(ge
 
 @api_router.patch("/admin/users/{username}")
 async def admin_update_user(username: str, payload: AdminUserUpdate, current: dict = Depends(get_current_admin)):
-    if current.get("role") != "super_admin":
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
-    if username == current["username"] and payload.role and payload.role != "super_admin":
-        raise HTTPException(status_code=400, detail="Cannot downgrade your own role")
+    _require_perm(current, "users_manage")
+    if username == current["username"] and payload.role and payload.role != current.get("role"):
+        raise HTTPException(status_code=400, detail="Cannot change your own role")
     updates: dict = {}
     if payload.recovery_email:
         updates["recovery_email"] = str(payload.recovery_email)
     if payload.role:
-        if payload.role not in VALID_ROLES:
-            raise HTTPException(status_code=400, detail="Invalid role")
+        await _validate_role_name(payload.role)
         updates["role"] = payload.role
     if payload.password:
         if len(payload.password) < 6:
@@ -1116,8 +1578,7 @@ async def admin_update_user(username: str, payload: AdminUserUpdate, current: di
 
 @api_router.delete("/admin/users/{username}")
 async def admin_delete_user(username: str, current: dict = Depends(get_current_admin)):
-    if current.get("role") != "super_admin":
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    _require_perm(current, "users_manage")
     if username == current["username"]:
         raise HTTPException(status_code=400, detail="Cannot delete your own account")
     result = await db.admins.delete_one({"username": username})
@@ -1151,6 +1612,14 @@ async def on_startup():
     await db.tickets.create_index("ticket_number")
     await db.ticket_categories.create_index("id", unique=True)
     await db.ticket_categories.create_index("slug", unique=True)
+    await db.admin_roles.create_index("id", unique=True)
+    await db.admin_roles.create_index("name", unique=True)
+    await db.expenses.create_index("id", unique=True)
+    await db.expenses.create_index("date")
+    await db.expenses.create_index("category")
+    await db.staff.create_index("id", unique=True)
+    await db.attendance.create_index("id", unique=True)
+    await db.attendance.create_index([("staff_id", 1), ("date", 1)], unique=True)
     await seed_admin()
     await seed_plans()
     await seed_team()
