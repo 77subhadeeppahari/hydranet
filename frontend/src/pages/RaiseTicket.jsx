@@ -108,7 +108,7 @@ export default function RaiseTicket() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Info sidebar */}
         <div className="space-y-4">
-          <InfoBlock icon={Phone} label="Phone Support" value="+91 70635 82555 / 70635 82561" />
+          <InfoBlock icon={Phone} label="Phone Support" value="+91 7864068605" />
           <InfoBlock icon={Mail} label="Email Support" value="help@hydranetbroadband.in" />
           <InfoBlock icon={MapPin} label="Coverage Area" value="East & West Midnapore, West Bengal" />
           <div className="hn-card rounded-xl p-6">

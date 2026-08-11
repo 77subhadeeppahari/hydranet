@@ -131,7 +131,7 @@ const POLICIES = {
       {
         title: "1. How to request cancellation",
         paragraphs: [
-          "The account holder can request cancellation by contacting help@hydranetbroadband.in or calling +91 70635 82555 / 70635 82561. Include your registered name, phone number, customer or account reference if available, service address, and requested cancellation date.",
+          "The account holder can request cancellation by contacting help@hydranetbroadband.in or calling +91 7864068605. Include your registered name, phone number, customer or account reference if available, service address, and requested cancellation date.",
           "For security, we may verify the account holder before accepting the request. A request is not complete until Hydranet confirms it and provides the effective date or any action still required.",
         ],
       },
@@ -212,7 +212,7 @@ export default function PolicyPage() {
         <div className="mt-12 pt-8 border-t border-white/10">
           <div className="text-xs uppercase tracking-widest font-mono-metric text-[#F26B21]">Questions about this policy?</div>
           <p className="mt-3 text-slate-300">
-            Contact <a href="mailto:help@hydranetbroadband.in" className="text-white hover:text-[#F26B21]">help@hydranetbroadband.in</a> or call +91 70635 82555 / 70635 82561.
+            Contact <a href="mailto:help@hydranetbroadband.in" className="text-white hover:text-[#F26B21]">help@hydranetbroadband.in</a> or call +91 7864068605.
           </p>
         </div>
       </article>

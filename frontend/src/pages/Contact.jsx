@@ -35,7 +35,7 @@ export default function Contact() {
         {/* Info */}
         <div className="space-y-4">
           <InfoBlock icon={Mail} label="Email" value="help@hydranetbroadband.in" testId="contact-info-email" />
-          <InfoBlock icon={Phone} label="Phone" value="+91 70635 82555 / 70635 82561" testId="contact-info-phone" />
+          <InfoBlock icon={Phone} label="Phone" value="+91 7864068605" testId="contact-info-phone" />
           <InfoBlock icon={MapPin} label="Office" value="Bagda, Mohanpur, West Midnapore, West Bengal — 721436, India (Near PNB Bank)" testId="contact-info-address" />
           <div className="hn-card rounded-xl p-6">
             <div className="hn-overline mb-3">Support Hours</div>
