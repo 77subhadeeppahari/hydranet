@@ -45,6 +45,15 @@ python3 -m venv "${APP_DIR}/.venv"
 "${APP_DIR}/.venv/bin/pip" install -r "${APP_DIR}/backend/requirements.txt"
 
 cd "${APP_DIR}/frontend"
+# Replit-generated lockfiles can contain internal package-firewall URLs that
+# are unreachable from an external VPS. Normalize them to the public registry.
+if [[ -f yarn.lock ]]; then
+  sed -i \
+    -e 's#http://package-firewall\.replit\.local/npm/#https://registry.npmjs.org/#g' \
+    -e 's#https://package-firewall\.replit\.local/npm/#https://registry.npmjs.org/#g' \
+    yarn.lock
+fi
+yarn config set registry https://registry.npmjs.org/ >/dev/null
 yarn install --frozen-lockfile
 REACT_APP_BACKEND_URL="" yarn build
 

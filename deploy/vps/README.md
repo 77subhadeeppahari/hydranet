@@ -81,12 +81,16 @@ additional `-d` name and create its DNS record first.
 ```bash
 cd /var/www/hydranet
 sudo git pull
-sudo -u www-data bash -lc 'cd /var/www/hydranet/frontend && yarn install --frozen-lockfile && REACT_APP_BACKEND_URL="" yarn build'
+sudo -u www-data bash -lc 'cd /var/www/hydranet/frontend && sed -i -e "s#http://package-firewall\\.replit\\.local/npm/#https://registry.npmjs.org/#g" -e "s#https://package-firewall\\.replit\\.local/npm/#https://registry.npmjs.org/#g" yarn.lock && yarn config set registry https://registry.npmjs.org/ && yarn install --frozen-lockfile && REACT_APP_BACKEND_URL="" yarn build'
 sudo systemctl restart hydranet-backend
 sudo systemctl reload nginx
 ```
 
 If `APP_DIR` is different, replace `/var/www/hydranet` in the commands.
+
+The installer and update command normalize Replit-only package URLs in the
+lockfile. `package-firewall.replit.local` is only reachable inside Replit and
+must not be used by an external VPS.
 
 ## Troubleshooting
 
