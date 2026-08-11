@@ -43,8 +43,9 @@ export const Footer = () => (
         <p>© {new Date().getFullYear()} Hydranet Broadband. All rights reserved.</p>
         <div className="flex items-center gap-4">
           <Link to="/admin/login" className="hover:text-[#F26B21]" data-testid="footer-admin-link">Admin</Link>
-          <span>Privacy</span>
-          <span>Terms</span>
+          <Link to="/privacy-policy" className="hover:text-[#F26B21]" data-testid="footer-privacy-link">Privacy</Link>
+          <Link to="/terms-and-conditions" className="hover:text-[#F26B21]" data-testid="footer-terms-link">Terms</Link>
+          <Link to="/cancellation-policy" className="hover:text-[#F26B21]" data-testid="footer-cancellation-link">Cancellation</Link>
         </div>
       </div>
     </div>
